@@ -14,5 +14,5 @@ invokable: true
 # Tests Funcionales Exhaustivos
 - crea test sobre todos los smartcomtract de la dao
 - crear un directorio docs
-- cuando finalizes la ejecucion de test, crea un reporte en markdown de las tareas realizadas 
+- cuando finalizes la ejecucion de test, crea un reporte en markdown de las tareas realizadas y dejalo en docs
 

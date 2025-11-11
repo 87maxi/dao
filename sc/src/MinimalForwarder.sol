@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {EIP712} from  "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /**
- * @dev Simple minimal forwarder to be used together with an ERC2771 compatible contract. See {ERC2771Context}.
+ * @dev Minimal forwarder compliant with EIP-2771 for gasless transactions
  */
-contract MinimalForwarder is EIP712 {
+contract MinimalForwarder {
     using ECDSA for bytes32;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     struct ForwardRequest {
         address from;
@@ -19,48 +20,96 @@ contract MinimalForwarder is EIP712 {
         bytes data;
     }
 
-    bytes32 private constant _TYPEHASH =
-        keccak256("ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,bytes data)");
+    bytes32 private constant _TYPEHASH = keccak256(
+        "ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,bytes data)"
+    );
 
     mapping(address => uint256) private _nonces;
-
-    constructor() EIP712("MinimalForwarder", "0.0.1") {}
-
+    
+    /**
+     * @dev Returns the nonce for a given address
+     */
     function getNonce(address from) public view returns (uint256) {
         return _nonces[from];
     }
 
-    function verify(ForwardRequest calldata req, bytes calldata signature) public view returns (bool) {
-        address signer = _hashTypedDataV4(
-            keccak256(abi.encode(_TYPEHASH, req.from, req.to, req.value, req.gas, req.nonce, keccak256(req.data)))
-        ).recover(signature);
-        return _nonces[req.from] == req.nonce && signer == req.from;
+    /**
+     * @dev Validates the signature and forwards the call to the target contract
+     * @param req The forward request structure
+     * @param signature The signature of the request
+     * @return success Whether the call succeeded
+     * @return result The return data from the call
+     */
+    function execute(ForwardRequest calldata req, bytes calldata signature)
+        external
+        payable
+        returns (bool success, bytes memory result)
+    {
+        address signer = _verify(req, signature);
+        require(signer == req.from, "MinimalForwarder: signature does not match request signer");
+
+        require(_nonces[req.from] == req.nonce, "MinimalForwarder: invalid nonce");
+
+        _nonces[req.from]++;
+
+        (success, result) = req.to.call{value: req.value, gas: req.gas}(req.data);
+        require(success, "MinimalForwarder: call failed");
     }
 
-    function execute(ForwardRequest calldata req, bytes calldata signature)
-        public
-        payable
-        returns (bool, bytes memory)
+    /**
+     * @dev Verifies the signature of a forward request
+     * @param req The forward request to verify
+     * @param signature The signature to verify
+     * @return signer The address of the signer
+     */
+    function _verify(ForwardRequest calldata req, bytes calldata signature)
+        private
+        view
+        returns (address)
     {
-        require(verify(req, signature), "MinimalForwarder: signature does not match request");
-        _nonces[req.from] = req.nonce + 1;
-
-        (bool success, bytes memory returndata) = req.to.call{gas: req.gas, value: req.value}(
-            abi.encodePacked(req.data, req.from)
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _domainSeparator(),
+                keccak256(_encode(req))
+            )
         );
 
-        // Validate that the relayer has sent enough gas for the call.
-        // See https://ronan.eth.limo/blog/ethereum-gas-dangers/
-        if (gasleft() <= req.gas / 63) {
-            // We explicitly trigger invalid opcode to consume all gas and bubble-up the effects, since
-            // neither revert or assert consume all gas since Solidity 0.8.0
-            // https://docs.soliditylang.org/en/v0.8.0/control-structures.html#panic-via-assert-and-error-via-require
-            /// @solidity memory-safe-assembly
-            assembly {
-                invalid()
-            }
-        }
+        address signer = digest.recover(signature);
+        require(signer != address(0), "MinimalForwarder: invalid signature");
+        return signer;
+    }
 
-        return (success, returndata);
+    /**
+     * @dev Encodes a forward request
+     * @param req The request to encode
+     * @return encoded The encoded request
+     */
+    function _encode(ForwardRequest calldata req) private pure returns (bytes memory) {
+        return abi.encode(
+            _TYPEHASH,
+            req.from,
+            req.to,
+            req.value,
+            req.gas,
+            req.nonce,
+            keccak256(req.data)
+        );
+    }
+
+    /**
+     * @dev Returns the domain separator for EIP-712
+     * @return domainSeparator The domain separator hash
+     */
+    function _domainSeparator() private view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("MinimalForwarder")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
     }
 }
