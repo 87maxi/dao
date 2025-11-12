@@ -6,8 +6,6 @@ invokable: true
 
 
 
-
-
 ## Intruciones para inicializar el projecto 
 1. crea siempre el directorio web, si no existe , este sera el workspace del projecto
 2. inicializa el projecto con el comando npm init en el directorio web
@@ -20,16 +18,14 @@ invokable: true
 11. crea los archivos necesarios para este projecto, siguiendo los estandares de nextjs
 
 
- 
 
 # TypeScript y Estándares de Codificación
-
 
 **1. Tipado Riguroso (TypeScript):**
    - Siempre utiliza **tipos explícitos** para argumentos de funciones, retornos y variables de estado (`useState`).
    - nunca uses **any**. Prefiere los tipos especificos sobre la definicion.
 
-**2. Desarrollo de Componentes (React/Next.js):**
+**2. Desarrollo de Componentes (Next.js):**
    - Usa **Componentes de Función** y Hooks.
    - Utiliza extructura consistente en los jsx  para tener un diseño consistente para que sea responsive y sea estable tanto para desktop como mobile.
    - Usa **Tailwind y todas las dependencias que sean necesarias** si el proyecto los usa.
@@ -38,7 +34,7 @@ invokable: true
    - **Responsivo por Defecto:** Todo el código de UI debe ser diseñado utilizando un enfoque web3
 **4. interacion con la wallet**
    - usa la dependecia ethersjs 
-   - implementa la interacion con metamask
+   - implementa la interaccion con metamask
 
 
 ---
@@ -59,7 +55,6 @@ invokable: true
    - genera un **archivo .env** con todas las variables necesarias para iniciar la aplicacion
    - **verifica la conecion** a las cuentas de anvil
    - **se consistente con la implementacion**  package.json, define claramente todos los comandos necesarios para poder ejecutar la aplicacion **se muy extricto en esta definicion y en el uso** chequea que los comandos funcionen correctamente
-
 
 ## Reportes
    - al finalizar las tareas crean un directorio docs, si es que no existe
