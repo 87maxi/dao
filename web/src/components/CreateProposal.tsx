@@ -6,7 +6,13 @@ import { useState } from 'react';
  * Props para el componente CreateProposal
  */
 interface CreateProposalProps {
-  onCreateProposal: (title: string, description: string, deadline: Date) => void;
+  onCreateProposal: (
+    title: string, 
+    description: string, 
+    deadline: Date,
+    recipientAddress: string,
+    isGasless: boolean
+  ) => void;
   disabled?: boolean;
 }
 
@@ -17,6 +23,8 @@ interface CreateProposalProps {
 export default function CreateProposal({ onCreateProposal, disabled = false }: CreateProposalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [recipientAddress, setRecipientAddress] = useState('');
+  const [isGasless, setIsGasless] = useState(false);
   const [deadline, setDeadline] = useState<string>(
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
@@ -39,6 +47,12 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
       newErrors.description = 'Description is required';
     } else if (description.length < 10) {
       newErrors.description = 'Description must be at least 10 characters';
+    }
+    
+    if (!recipientAddress.trim()) {
+      newErrors.recipientAddress = 'Recipient address is required';
+    } else if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddress)) {
+      newErrors.recipientAddress = 'Please enter a valid Ethereum address';
     }
     
     if (!deadline) {
@@ -67,11 +81,19 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
     setSubmitting(true);
     
     try {
-      await onCreateProposal(title, description, new Date(deadline));
+      await onCreateProposal(
+        title, 
+        description, 
+        new Date(deadline),
+        recipientAddress,
+        isGasless
+      );
       
       // Reiniciar el formulario
       setTitle('');
       setDescription('');
+      setRecipientAddress('');
+      setIsGasless(false);
       setErrors({});
     } catch (error) {
       console.error('Error creating proposal:', error);
@@ -120,6 +142,47 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
             placeholder="Describe your proposal in detail"
           ></textarea>
           {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
+        </div>
+
+        <div>
+          <label htmlFor="recipientAddress" className="block text-sm font-medium text-gray-700 mb-2">
+            Recipient Address
+          </label>
+          <input
+            type="text"
+            id="recipientAddress"
+            value={recipientAddress}
+            onChange={(e) => setRecipientAddress(e.target.value)}
+            disabled={disabled || submitting}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 
+                     focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-50 
+                     disabled:cursor-not-allowed transition-colors duration-200 font-mono text-sm"
+            placeholder="0x..."
+          />
+          {errors.recipientAddress && <p className="mt-1 text-sm text-red-600">{errors.recipientAddress}</p>}
+          <p className="mt-1 text-xs text-gray-500">
+            Enter the Ethereum address that will receive the funds if the proposal passes
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <input
+            type="checkbox"
+            id="gasless"
+            checked={isGasless}
+            onChange={(e) => setIsGasless(e.target.checked)}
+            disabled={disabled || submitting}
+            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 
+                     focus:ring-2 disabled:bg-gray-200 disabled:cursor-not-allowed"
+          />
+          <div className="flex-1">
+            <label htmlFor="gasless" className="text-sm font-medium text-gray-700 cursor-pointer">
+              Gasless Voting
+            </label>
+            <p className="text-xs text-gray-500 mt-1">
+              Enable gasless voting for this proposal. Users won't need to pay gas fees to vote.
+            </p>
+          </div>
         </div>
 
         <div>

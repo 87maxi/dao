@@ -10,7 +10,7 @@ import { useState } from 'react';
 const initialProposals: Proposal[] = [
   {
     id: 1,
-    title: "Upgrade Governance Contract",
+    title: "mock  Upgrade Governance Contract",
     description: "Propose an upgrade to the DAO's governance contract to improve voting efficiency and add new features for proposal management.",
     creator: "0x1234567890123456789012345678901234567890",
     voteCount: 42,
@@ -19,7 +19,7 @@ const initialProposals: Proposal[] = [
   },
   {
     id: 2,
-    title: "Allocate Budget for Marketing",
+    title: "mock Allocate Budget for Marketing",
     description: "Request funding for a new marketing campaign to increase awareness and adoption of our platform.",
     creator: "0x2345678901234567890123456789012345678901",
     voteCount: 28,
@@ -28,7 +28,7 @@ const initialProposals: Proposal[] = [
   },
   {
     id: 3,
-    title: "Partnership with Web3 Foundation",
+    title: "mock Partnership with Web3 Foundation",
     description: "Formalize a partnership with the Web3 Foundation to collaborate on research and development initiatives.",
     creator: "0x3456789012345678901234567890123456789012",
     voteCount: 15,
@@ -37,7 +37,7 @@ const initialProposals: Proposal[] = [
   },
   {
     id: 4,
-    title: "Implement Bug Bounty Program",
+    title: "mock Implement Bug Bounty Program",
     description: "Establish a bug bounty program to incentivize security researchers to find and report vulnerabilities in our codebase.",
     creator: "0x4567890123456789012345678901234567890123",
     voteCount: 67,
@@ -46,7 +46,7 @@ const initialProposals: Proposal[] = [
   },
   {
     id: 5,
-    title: "Change Token Distribution",
+    title: "mock Change Token Distribution",
     description: "Modify the token distribution model to better align incentives for long-term stakeholders.",
     creator: "0x5678901234567890123456789012345678901234",
     voteCount: 8,

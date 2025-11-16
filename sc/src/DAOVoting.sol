@@ -7,13 +7,23 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /**
- * @dev DAO contract with gasless voting capabilities
+ * @title DAOVoting
+ * @dev DAO contract with proposal management and voting system 
+ * Supports gasless voting via EIP-2771 meta-transactions
  */
 contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
     using ECDSA for bytes32;
 
     IERC20 public immutable token;
+    address public trustedForwarder;
     
+    // EIP-712 typehashes
+    bytes32 private constant _CAST_VOTE_TYPEHASH = 
+        keccak256("CastVote(address from,uint256 proposalId,uint8 voteType,uint256 nonce,uint256 deadline)");
+    
+    bytes32 private constant _CREATE_PROPOSAL_TYPEHASH = 
+        keccak256("CreateProposal(address from,string description,uint256 nonce,uint256 deadline)");
+
     struct Proposal {
         uint256 proposalId;
         address proposer;
@@ -34,6 +44,7 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
     uint256 public proposalCount;
     mapping(uint256 => Proposal) public proposals;
     mapping(address => uint256) public userProposalVotes;
+    mapping(address => uint256) public nonces;
     
     // Vote types
     enum VoteType { 
@@ -46,20 +57,58 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         uint256 indexed proposalId,
         address indexed proposer,
         string description,
-        uint256 deadline
+        uint256 deadline,
+        bool isMetaTx
     );
     
     event VoteCast(
         uint256 indexed proposalId,
         address indexed voter,
         VoteType voteType,
-        uint256 votes
+        uint256 votes,
+        bool isMetaTx
     );
     
     event ProposalExecuted(uint256 indexed proposalId);
+    event TrustedForwarderUpdated(address indexed forwarder);
 
-    constructor(address tokenAddress) Ownable(msg.sender) {
+    constructor(address tokenAddress, address forwarder) Ownable(msg.sender) {
         token = IERC20(tokenAddress);
+        trustedForwarder = forwarder;
+    }
+    
+    /**
+     * @dev Check if the caller is a trusted forwarder for EIP-2771
+     */
+    function isTrustedForwarder(address forwarder) public view returns (bool) {
+        return forwarder == trustedForwarder;
+    }
+    
+    /**
+     * @dev Returns the msg.sender for EIP-2771 meta-transactions
+     */
+    function _msgSender() internal view virtual override returns (address) {
+        address sender = msg.sender;
+        
+        // If called via trusted forwarder, extract the real sender from calldata
+        if (isTrustedForwarder(sender)) {
+            // The assembly code here extracts the address from the calldata
+            // which is appended by the forwarder (last 20 bytes)
+            assembly {
+                sender := shr(96, calldataload(sub(calldatasize(), 20)))
+            }
+        }
+        return sender;
+    }
+    
+    /**
+     * @dev Updates the trusted forwarder address
+     * @param forwarder The new trusted forwarder address
+     */
+    function setTrustedForwarder(address forwarder) external onlyOwner {
+        require(forwarder != address(0), "DAOVoting: invalid forwarder");
+        trustedForwarder = forwarder;
+        emit TrustedForwarderUpdated(forwarder);
     }
     
     /**
@@ -67,19 +116,63 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param description The proposal description
      */
     function createProposal(string memory description) external {
-        require(token.balanceOf(msg.sender) >= MIN_PROPOSAL_THRESHOLD, "DAOVoting: insufficient balance to create proposal");
+        address sender = _msgSender();
+        _createProposal(sender, description, false);
+    }
+    
+    /**
+     * @dev Creates a new proposal via meta-transaction
+     * @param from The original sender
+     * @param description The proposal description
+     * @param deadline The deadline for the meta-transaction
+     * @param signature The signature for verification
+     */
+    function createProposalByMetaTx(
+        address from,
+        string memory description,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        require(isTrustedForwarder(msg.sender), "DAOVoting: untrusted forwarder");
+        require(block.timestamp <= deadline, "DAOVoting: signature expired");
+        
+        // Verify the signature
+        bytes32 structHash = keccak256(
+            abi.encode(
+                _CREATE_PROPOSAL_TYPEHASH,
+                from,
+                keccak256(bytes(description)),
+                nonces[from]++,
+                deadline
+            )
+        );
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address signer = digest.recover(signature);
+        require(signer == from, "DAOVoting: invalid signature");
+        
+        _createProposal(from, description, true);
+    }
+    
+    /**
+     * @dev Internal function to create a proposal
+     * @param proposer The address of the proposer
+     * @param description The proposal description
+     * @param isMetaTx Whether this is a meta-transaction
+     */
+    function _createProposal(address proposer, string memory description, bool isMetaTx) internal {
+        require(token.balanceOf(proposer) >= MIN_PROPOSAL_THRESHOLD, "DAOVoting: insufficient balance to create proposal");
         
         proposalCount++;
         Proposal storage proposal = proposals[proposalCount];
         
         proposal.proposalId = proposalCount;
-        proposal.proposer = msg.sender;
+        proposal.proposer = proposer;
         proposal.description = description;
         proposal.createdAt = block.timestamp;
         proposal.deadline = block.timestamp + VOTING_PERIOD;
         proposal.executed = false;
         
-        emit ProposalCreated(proposalCount, msg.sender, description, proposal.deadline);
+        emit ProposalCreated(proposalCount, proposer, description, proposal.deadline, isMetaTx);
     }
     
     /**
@@ -88,11 +181,11 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param voteType The type of vote (FOR, AGAINST, ABSTAIN)
      */
     function castVote(uint256 proposalId, VoteType voteType) external {
-        _castVote(msg.sender, proposalId, voteType);
+        _castVote(_msgSender(), proposalId, voteType, false);
     }
     
     /**
-     * @dev Casts a vote on a proposal with signature (gasless)
+     * @dev Casts a vote on a proposal with signature (gasless - EIP-712)
      * @param proposalId The ID of the proposal
      * @param voteType The type of vote (FOR, AGAINST, ABSTAIN)
      * @param signature The user's signature
@@ -110,7 +203,44 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         address signer = digest.recover(signature);
         require(signer != address(0), "DAOVoting: invalid signature");
         
-        _castVote(signer, proposalId, voteType);
+        _castVote(signer, proposalId, voteType, false);
+    }
+    
+    /**
+     * @dev Casts a vote via EIP-2771 meta-transaction
+     * This function is called by the trusted forwarder
+     * @param from The original sender of the transaction
+     * @param proposalId The ID of the proposal
+     * @param voteType The type of vote
+     * @param deadline The deadline for the meta-transaction
+     * @param signature The signature for verification
+     */
+    function castVoteByMetaTx(
+        address from,
+        uint256 proposalId,
+        VoteType voteType,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        require(isTrustedForwarder(msg.sender), "DAOVoting: untrusted forwarder");
+        require(block.timestamp <= deadline, "DAOVoting: signature expired");
+        
+        // Verify the signature
+        bytes32 structHash = keccak256(
+            abi.encode(
+                _CAST_VOTE_TYPEHASH,
+                from,
+                proposalId,
+                voteType,
+                nonces[from]++,
+                deadline
+            )
+        );
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address signer = digest.recover(signature);
+        require(signer == from, "DAOVoting: invalid signature");
+        
+        _castVote(from, proposalId, voteType, true);
     }
     
     /**
@@ -118,8 +248,9 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param voter The address of the voter
      * @param proposalId The ID of the proposal
      * @param voteType The type of vote
+     * @param isMetaTx Whether this is a meta-transaction
      */
-    function _castVote(address voter, uint256 proposalId, VoteType voteType) internal {
+    function _castVote(address voter, uint256 proposalId, VoteType voteType, bool isMetaTx) internal {
         require(proposalId > 0 && proposalId <= proposalCount, "DAOVoting: invalid proposal ID");
         
         Proposal storage proposal = proposals[proposalId];
@@ -142,7 +273,7 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
             proposal.abstainVotes += votes;
         }
         
-        emit VoteCast(proposalId, voter, voteType, votes);
+        emit VoteCast(proposalId, voter, voteType, votes, isMetaTx);
     }
     
     /**
@@ -165,6 +296,15 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         proposal.executed = true;
         
         emit ProposalExecuted(proposalId);
+    }
+    
+    /**
+     * @dev Returns the current nonce for an address (for meta-transactions)
+     * @param from The address to get the nonce for
+     * @return The current nonce
+     */
+    function getNonce(address from) external view returns (uint256) {
+        return nonces[from];
     }
     
     /**
@@ -223,5 +363,24 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         }
         
         return (proposal.createdAt, proposal.deadline, proposal.executed, remainingTime);
+    }
+    
+    /**
+     * @dev Returns whether an address has voted on a specific proposal
+     * @param proposalId The ID of the proposal
+     * @param voter The address of the voter
+     * @return Whether the address has voted
+     */
+    function hasVoted(uint256 proposalId, address voter) external view returns (bool) {
+        require(proposalId > 0 && proposalId <= proposalCount, "DAOVoting: invalid proposal ID");
+        return proposals[proposalId].hasVoted[voter];
+    }
+    
+    /**
+     * @dev Returns the domain separator for EIP-712
+     * @return The domain separator
+     */
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 }

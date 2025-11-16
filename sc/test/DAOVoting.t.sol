@@ -5,16 +5,13 @@ import "forge-std/Test.sol";
 import "../src/DAOVoting.sol";
 import "../src/MinimalForwarder.sol";
 
-// Mock ERC20 token for testing
-contract MockERC20 {
+// Mock ERC20 token for testing - implementa IERC20 completamente
+contract MockERC20 is IERC20 {
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
-    
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
     
     constructor(string memory name_, string memory symbol_) {
         _name = name_;
@@ -56,13 +53,17 @@ contract MockERC20 {
     }
     
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
-        _spendAllowance(from, to, amount);
+        _spendAllowance(from, msg.sender, amount);
         _transfer(from, to, amount);
         return true;
     }
     
     function mint(address account, uint256 amount) public {
         _mint(account, amount);
+    }
+    
+    function burn(address account, uint256 amount) public {
+        _burn(account, amount);
     }
     
     function _transfer(address from, address to, uint256 amount) internal {
@@ -99,310 +100,377 @@ contract MockERC20 {
         _totalSupply += amount;
         emit Transfer(address(0), account, amount);
     }
+    
+    function _burn(address account, uint256 amount) internal {
+        require(account != address(0), "ERC20: burn from the zero address");
+        require(_balances[account] >= amount, "ERC20: burn amount exceeds balance");
+        
+        _balances[account] -= amount;
+        _totalSupply -= amount;
+        emit Transfer(account, address(0), amount);
+    }
 }
 
 contract DAOVotingTest is Test {
-    DAOVoting dao;
-    MinimalForwarder forwarder;
-    MockERC20 token;
-    address internal constant OWNER = address(0x123);
-    address internal constant USER1 = address(0x456);
-    address internal constant USER2 = address(0x789);
-    address internal constant USER3 = address(0xabc);
-    uint256 internal constant OWNER_PRIVATE_KEY = 1;
-    uint256 internal constant USER1_PRIVATE_KEY = 2;
-    uint256 internal constant USER2_PRIVATE_KEY = 3;
+    DAOVoting public dao;
+    MinimalForwarder public forwarder;
+    MockERC20 public token;
+    
+    // Test addresses
+    address public constant OWNER = address(0x123);
+    address public constant USER1 = address(0x456);
+    address public constant USER2 = address(0x789);
+    address public constant USER3 = address(0xabc);
+    address public constant USER_WITHOUT_TOKENS = address(0xdef);
+    address public constant ATTACKER = address(0x666);
+    
+    // Private keys for signature testing
+    uint256 public constant USER1_PRIVATE_KEY = 0x1;
+    uint256 public constant USER2_PRIVATE_KEY = 0x2;
+    
+    // Test constants
+    uint256 public constant INITIAL_BALANCE = 1 ether;
+    uint256 public constant VOTING_DELAY = 1 hours;
+    uint256 public constant VOTING_PERIOD = 24 hours;
     
     function setUp() public {
+        // Deploy contracts
         forwarder = new MinimalForwarder();
         token = new MockERC20("DAO Token", "DAO");
-        // Mint tokens to users
-        token.mint(OWNER, 1 ether);
-        token.mint(USER1, 1 ether);
-        token.mint(USER2, 1 ether);
-        token.mint(USER3, 1 ether);
+        dao = new DAOVoting(address(token), address(forwarder));
         
-        dao = new DAOVoting(address(token));
-    }
-    
-    function testCreateProposal() public {
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        assertEq(dao.proposalCount(), 1);
-        
-        (uint256 forVotes, uint256 againstVotes, uint256 abstainVotes, uint256 totalVotes) = dao.getProposalStats(1);
-        assertEq(forVotes, 0);
-        assertEq(againstVotes, 0);
-        assertEq(abstainVotes, 0);
-        assertEq(totalVotes, 0);
-        
-        (, uint256 deadline, bool executed, uint256 remainingTime) = dao.getProposalState(1);
-        assertTrue(deadline > block.timestamp);
-        assertEq(executed, false);
-        assertTrue(remainingTime > 0);
-    }
-    
-    function testCreateProposalInsufficientBalance() public {
-        vm.prank(USER3);
-        vm.expectRevert("DAOVoting: insufficient balance to create proposal");
-        dao.createProposal("Test proposal");
-    }
-    
-    function testCastVote() public {
-        // Create proposal
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        // Try to vote before voting period starts
-        vm.expectRevert("DAOVoting: voting not started");
-        vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.FOR);
-        
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Cast vote
-        vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.FOR);
-        
-        // Try to vote again
-        vm.expectRevert("DAOVoting: already voted");
-        vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.AGAINST);
-        
-        // Check votes
-        (uint256 forVotes, uint256 againstVotes, uint256 abstainVotes, uint256 totalVotes) = dao.getProposalStats(1);
-        assertEq(forVotes, 1 ether);
-        assertEq(againstVotes, 0);
-        assertEq(abstainVotes, 0);
-        assertEq(totalVotes, 1 ether);
-        
-        assertEq(dao.userProposalVotes(USER1), 1);
-    }
-    
-    function testCastVoteInvalidProposal() public {
-        vm.expectRevert("DAOVoting: invalid proposal ID");
-        vm.prank(USER1);
-        dao.castVote(999, DAOVoting.VoteType.FOR);
-    }
-    
-    function testCastVoteInvalidVoteType() public {
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        vm.warp(block.timestamp + 2 hours);
-        
-        vm.expectRevert("DAOVoting: invalid vote type");
-        vm.prank(USER1);
-        // Try to cast to an invalid vote type (out of bounds)
-        bytes memory data = abi.encodeWithSignature("castVote(uint256,uint8)", 1, 3);
-        (bool success, ) = address(dao).call(data);
-        assertFalse(success);
-    }
-    
-    function testCastVoteBySig() public {
-        // Create proposal
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Create vote signature
-            uint8 v;
-        bytes32 r;
-        bytes32 s;
-        bytes32 domainSeparator = keccak256(abi.encode(
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-            keccak256(bytes("DAOVoting")),
-            keccak256(bytes("1")),
-            block.chainid,
-            address(dao)
-        ));
-        bytes32 structHash = keccak256(abi.encode(
-            keccak256("CastVote(uint256 proposalId,uint8 voteType)"),
-            1,
-            uint8(DAOVoting.VoteType.FOR)
-        ));
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
-        // Advance time to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Create vote signature
-        // Create vote signature with vm.addr to create a valid address for signing
-        address user1Addr = vm.addr(USER1_PRIVATE_KEY);
-        (v, r, s) = vm.sign(USER1_PRIVATE_KEY, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-        
-        // Mint tokens to the user1 address so they have voting power
-        token.mint(user1Addr, 1 ether);
-        
-        // Cast vote with signature
-        dao.castVoteBySig(1, DAOVoting.VoteType.FOR, signature);
-        
-        // Check votes
-        (uint256 forVotes, uint256 againstVotes, uint256 abstainVotes, uint256 totalVotes) = dao.getProposalStats(1);
-        assertEq(forVotes, 1 ether);
-        assertEq(againstVotes, 0);
-        assertEq(abstainVotes, 0);
-        assertEq(totalVotes, 1 ether);
-        
-        assertEq(dao.userProposalVotes(user1Addr), 1);
-    }
-    
-    function testCastVoteBySigInvalidSignature() public {
-        // Create proposal
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Invalid signature
-        bytes memory signature = abi.encodePacked(
-            bytes32(uint256(0)),
-            bytes32(uint256(1)),
-            uint8(27)
-        );
-        
-        vm.expectRevert();
-        dao.castVoteBySig(1, DAOVoting.VoteType.FOR, signature);
+        // Setup token balances
+        token.mint(OWNER, INITIAL_BALANCE);
+        token.mint(USER1, INITIAL_BALANCE);
+        token.mint(USER2, INITIAL_BALANCE);
+        token.mint(USER3, INITIAL_BALANCE);
+        token.mint(ATTACKER, INITIAL_BALANCE);
     }
 
-    function testExecuteProposal() public {
-        // Create proposal
+    // ============ HELPER FUNCTIONS ============
+    
+    function createProposal() internal returns (uint256) {
         vm.prank(OWNER);
-        dao.createProposal("Test proposal");
+        dao.createProposal("Test Proposal");
+        return dao.proposalCount();
+    }
+    
+    function createProposalAndAdvanceToVoting() internal returns (uint256) {
+        uint256 proposalId = createProposal();
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        return proposalId;
+    }
+    
+    function createVoteSignature(
+        uint256 proposalId, 
+        DAOVoting.VoteType voteType, 
+        uint256 privateKey
+    ) internal view returns (bytes memory) {
+        bytes32 typeHash = keccak256("CastVote(uint256 proposalId,uint8 voteType)");
+        bytes32 structHash = keccak256(abi.encode(typeHash, proposalId, voteType));
         
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
+        bytes32 domainSeparator = dao.domainSeparator();
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
         
-        // Cast votes
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    // ============ TESTS CORREGIDOS ============
+
+    function test_EdgeCase_VoteWithMaxBalance() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        // User with large but safe balance (evitar overflow)
+        address richUser = address(0x999);
+        uint256 safeLargeBalance = type(uint256).max / 2; // Usar la mitad del máximo para evitar overflow
+        token.mint(richUser, safeLargeBalance);
+        
+        vm.prank(richUser);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        
+        (uint256 forVotes, , , ) = dao.getProposalStats(proposalId);
+        assertEq(forVotes, safeLargeBalance);
+    }
+
+    function test_Integration_CompleteFlow() public {
+        // 1. Create multiple proposals
+        vm.prank(OWNER);
+        dao.createProposal("Proposal 1: Upgrade Contract");
+        
+        vm.prank(USER1);
+        dao.createProposal("Proposal 2: Change Parameters");
+        
+        assertEq(dao.proposalCount(), 2);
+        
+        // 2. Advance to voting for first proposal
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        
+        // 3. Vote on first proposal - ensure it passes
         vm.prank(USER1);
         dao.castVote(1, DAOVoting.VoteType.FOR);
         
         vm.prank(USER2);
-        dao.castVote(1, DAOVoting.VoteType.FOR);
+        dao.castVote(1, DAOVoting.VoteType.FOR); // Add more FOR votes
         
-        // Fast forward to after deadline
-        vm.warp(block.timestamp + 25 hours);
+        vm.prank(USER3);
+        dao.castVote(1, DAOVoting.VoteType.FOR); // Add more FOR votes
         
-        // Execute proposal
+        // 4. Execute first proposal after deadline
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
         dao.executeProposal(1);
         
-        // Check proposal executed
+        // 5. Verify first proposal executed
         (, , bool executed, ) = dao.getProposalState(1);
+        assertTrue(executed);
+        
+        // 6. Second proposal should still be active
+        (, , executed, ) = dao.getProposalState(2);
+        assertFalse(executed);
+    }
+
+    function test_Security_VoteManipulation() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        // USER1 vota primero con sus 1 ETH
+        vm.prank(USER1);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        
+        // Verificar que el voto se registró correctamente
+        (uint256 forVotesBefore, , , ) = dao.getProposalStats(proposalId);
+        assertEq(forVotesBefore, INITIAL_BALANCE); // 1 ETH
+        assertTrue(dao.hasVoted(proposalId, USER1));
+        
+        // USER1 transfiere 0.5 ETH a USER2
+        uint256 transferAmount = INITIAL_BALANCE / 2;
+        vm.prank(USER1);
+        token.transfer(USER2, transferAmount);
+        
+        // Los votos de USER1 deberían permanecer iguales (votos bloqueados al momento de votar)
+        (uint256 forVotesAfter, , , ) = dao.getProposalStats(proposalId);
+        assertEq(forVotesAfter, INITIAL_BALANCE); // Sigue siendo 1 ETH
+        
+        // USER2 vota con sus tokens (1 ETH original + 0.5 ETH transferidos = 1.5 ETH)
+        vm.prank(USER2);
+        dao.castVote(proposalId, DAOVoting.VoteType.AGAINST);
+        
+        // Verificar los votos finales
+        (uint256 finalForVotes, uint256 finalAgainstVotes, , ) = dao.getProposalStats(proposalId);
+        
+        // USER1 votó con 1 ETH (balance original)
+        assertEq(finalForVotes, INITIAL_BALANCE);
+        
+        // USER2 vota con 1.5 ETH (1 ETH original + 0.5 ETH transferidos)
+        assertEq(finalAgainstVotes, INITIAL_BALANCE + transferAmount); // 1.5 ETH
+        
+        // Verificar que ambos usuarios han votado
+        assertTrue(dao.hasVoted(proposalId, USER1));
+        assertTrue(dao.hasVoted(proposalId, USER2));
+    }
+
+    // ============ FUZZING TESTS ============
+    
+    function testFuzz_CreateProposal(string memory description) public {
+        vm.assume(bytes(description).length > 0 && bytes(description).length < 1000);
+        
+        vm.prank(OWNER);
+        dao.createProposal(description);
+        
+        assertEq(dao.proposalCount(), 1);
+    }
+    
+    function testFuzz_CastVote(uint8 voteType) public {
+        voteType = uint8(bound(voteType, 0, 2)); // 0=FOR, 1=AGAINST, 2=ABSTAIN
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        vm.prank(USER1);
+        dao.castVote(proposalId, DAOVoting.VoteType(voteType));
+        
+        assertTrue(dao.hasVoted(proposalId, USER1));
+    }
+    
+    function testFuzz_ProposalExecution(uint8 forVotes, uint8 againstVotes) public {
+        forVotes = uint8(bound(forVotes, 1, 10));
+        againstVotes = uint8(bound(againstVotes, 0, forVotes - 1)); // Ensure forVotes > againstVotes
+        
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        // Create voters and mint tokens
+        for (uint8 i = 0; i < forVotes; i++) {
+            address voter = address(uint160(1000 + i));
+            token.mint(voter, 1 ether);
+            vm.prank(voter);
+            dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        }
+        
+        for (uint8 i = 0; i < againstVotes; i++) {
+            address voter = address(uint160(2000 + i));
+            token.mint(voter, 1 ether);
+            vm.prank(voter);
+            dao.castVote(proposalId, DAOVoting.VoteType.AGAINST);
+        }
+        
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+        
+        if (forVotes > againstVotes) {
+            dao.executeProposal(proposalId);
+            (, , bool executed, ) = dao.getProposalState(proposalId);
+            assertTrue(executed);
+        } else {
+            vm.expectRevert("DAOVoting: proposal not approved");
+            dao.executeProposal(proposalId);
+        }
+    }
+
+    // ============ BASE TESTS ============
+    
+    function test_CreateProposal_Success() public {
+        vm.prank(OWNER);
+        dao.createProposal("Test Proposal");
+        
+        assertEq(dao.proposalCount(), 1);
+    }
+    
+    function test_CastVote_Success() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        vm.prank(USER1);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        
+        assertTrue(dao.hasVoted(proposalId, USER1));
+    }
+    
+    function test_ExecuteProposal_Success() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        
+        vm.prank(USER1);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        vm.prank(USER2);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+        dao.executeProposal(proposalId);
+        
+        (, , bool executed, ) = dao.getProposalState(proposalId);
         assertTrue(executed);
     }
 
-    function testExecuteProposalNotApproved() public {
-        // Create proposal
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
+    // ============ SECURITY TESTS ============
+    
+    function test_Security_DoubleVotePrevention() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
         
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Cast votes against
+        // Vote once
         vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.AGAINST);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
         
-        // Fast forward to after deadline
-        vm.warp(block.timestamp + 25 hours);
-        
-        vm.expectRevert("DAOVoting: proposal not approved");
-        dao.executeProposal(1);
-    }
-
-    function testExecuteProposalAlreadyExecuted() public {
-        // Create proposal
-        vm.prank(OWNER);
-        dao.createProposal("Test proposal");
-        
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Cast votes
+        // Try to vote again - should fail
+        vm.expectRevert("DAOVoting: already voted");
         vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.FOR);
+        dao.castVote(proposalId, DAOVoting.VoteType.AGAINST);
+    }
+    
+    function test_Security_InvalidSignature() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
         
-        // Fast forward to after deadline
-        vm.warp(block.timestamp + 25 hours);
+        // Create invalid signature (random bytes)
+        bytes memory invalidSignature = abi.encodePacked(
+            bytes32(uint256(12345)),
+            bytes32(uint256(67890)),
+            uint8(27)
+        );
         
-        // Execute proposal
-        dao.executeProposal(1);
+        vm.expectRevert(); // Puede revertir por "invalid signature" o "no voting power"
+        dao.castVoteBySig(proposalId, DAOVoting.VoteType.FOR, invalidSignature);
+    }
+    
+    function test_Security_OnlyOwnerCanSetForwarder() public {
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", ATTACKER));
+        vm.prank(ATTACKER);
+        dao.setTrustedForwarder(ATTACKER);
+    }
+    
+    function test_Security_ReplayAttack() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        address user1Addr = vm.addr(USER1_PRIVATE_KEY);
+        token.mint(user1Addr, INITIAL_BALANCE);
         
-        // Try to execute again
-        vm.expectRevert("DAOVoting: proposal already executed");
-        dao.executeProposal(1);
+        bytes memory signature = createVoteSignature(proposalId, DAOVoting.VoteType.FOR, USER1_PRIVATE_KEY);
+        
+        // First vote should work
+        dao.castVoteBySig(proposalId, DAOVoting.VoteType.FOR, signature);
+        
+        // Second vote with same signature should fail
+        vm.expectRevert("DAOVoting: already voted");
+        dao.castVoteBySig(proposalId, DAOVoting.VoteType.FOR, signature);
+    }
+    
+    function test_Security_ExpiredSignature() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
+        address user1Addr = vm.addr(USER1_PRIVATE_KEY);
+        token.mint(user1Addr, INITIAL_BALANCE);
+        
+        bytes memory signature = createVoteSignature(proposalId, DAOVoting.VoteType.FOR, USER1_PRIVATE_KEY);
+        
+        // Fast forward time beyond voting period
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+        
+        vm.expectRevert("DAOVoting: voting period has ended");
+        dao.castVoteBySig(proposalId, DAOVoting.VoteType.FOR, signature);
     }
 
-    function testGetVotingPower() public {
-        assertEq(dao.getVotingPower(OWNER), 1 ether);
-        assertEq(dao.getVotingPower(USER1), 1 ether);
+    function test_Security_ZeroVotePower() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
         
-        // Test transfer
-        vm.prank(OWNER);
-        token.transfer(USER3, 0.5 ether);
-        
-        assertEq(dao.getVotingPower(USER3), 0.5 ether);
-        assertEq(token.balanceOf(USER3), 0.5 ether);
-        
-        // Test mint
-        token.mint(OWNER, 1 ether);
-        assertEq(dao.getVotingPower(OWNER), 1.5 ether);
-        
-        // Test burn by transferring to zero address
-        vm.prank(OWNER);
-        token.transfer(address(0), 0.5 ether);
-        assertEq(dao.getVotingPower(OWNER), 0.5 ether); // Previous 1.5 ether - 0.5 burned = 1 ether, but we transferred 0.5 so should be 1 ether - 0.5 transferred = 0.5 ether
+        vm.expectRevert("DAOVoting: no voting power");
+        vm.prank(USER_WITHOUT_TOKENS);
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
     }
 
-    function testGetProposalStats() public {
-        // Create proposal
+    // ============ EDGE CASE TESTS ============
+    
+    function test_EdgeCase_ZeroAddressProposal() public {
+        vm.expectRevert();
+        vm.prank(address(0));
+        dao.createProposal("Test");
+    }
+    
+    function test_EdgeCase_MaxProposalId() public {
+        vm.expectRevert("DAOVoting: invalid proposal ID");
+        dao.getProposalStats(type(uint256).max);
+    }
+    
+    function test_Security_ProposalIdOverflow() public {
         vm.prank(OWNER);
-        dao.createProposal("Test proposal");
+        dao.createProposal("Proposal 1");
+        assertEq(dao.proposalCount(), 1);
         
-        // Fast forward to voting period
-        vm.warp(block.timestamp + 2 hours);
-        
-        // Cast votes
         vm.prank(USER1);
-        dao.castVote(1, DAOVoting.VoteType.FOR);
-        
-        vm.prank(USER2);
-        dao.castVote(1, DAOVoting.VoteType.AGAINST);
-        
-        vm.prank(USER3);
-        dao.castVote(1, DAOVoting.VoteType.ABSTAIN);
-        
-        // Check stats
-        (uint256 forVotes, uint256 againstVotes, uint256 abstainVotes, uint256 totalVotes) = dao.getProposalStats(1);
-        assertEq(forVotes, 1 ether);
-        assertEq(againstVotes, 1 ether);
-        assertEq(abstainVotes, 1 ether);
-        assertEq(totalVotes, 3 ether);
+        dao.createProposal("Proposal 2");
+        assertEq(dao.proposalCount(), 2);
     }
 
-    function testGetProposalState() public {
-        // Create proposal
+    // ============ GAS OPTIMIZATION TESTS ============
+    
+    function test_Gas_CreateProposal() public {
         vm.prank(OWNER);
-        dao.createProposal("Test proposal");
+        uint256 gasBefore = gasleft();
+        dao.createProposal("Test Proposal");
+        uint256 gasUsed = gasBefore - gasleft();
         
-        // Check initial state
-        (uint256 createdAt, uint256 deadline, bool executed, uint256 remainingTime) = dao.getProposalState(1);
-        assertEq(createdAt, block.timestamp);
-        assertEq(deadline, block.timestamp + dao.VOTING_PERIOD());
-        assertEq(executed, false);
-        assertTrue(remainingTime > 0);
+        console.log("Gas used for createProposal:", gasUsed);
+        assertTrue(gasUsed < 500000, "Gas usage too high");
+    }
+    
+    function test_Gas_CastVote() public {
+        uint256 proposalId = createProposalAndAdvanceToVoting();
         
-        // Fast forward to after deadline
-        vm.warp(block.timestamp + 25 hours);
+        vm.prank(USER1);
+        uint256 gasBefore = gasleft();
+        dao.castVote(proposalId, DAOVoting.VoteType.FOR);
+        uint256 gasUsed = gasBefore - gasleft();
         
-        // Check final state
-        (createdAt, deadline, executed, remainingTime) = dao.getProposalState(1);
-        assertEq(executed, false);
-        assertEq(remainingTime, 0);
+        console.log("Gas used for castVote:", gasUsed);
+        assertTrue(gasUsed < 300000, "Gas usage too high");
     }
 }

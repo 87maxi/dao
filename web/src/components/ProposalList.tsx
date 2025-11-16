@@ -33,6 +33,15 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
   const [filter, setFilter] = useState<'all' | 'active' | 'passed' | 'rejected' | 'pending'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Función para normalizar fechas de forma consistente
+  const normalizeDate = (date: string | Date): Date => {
+    // Si ya es un Date object, devolverlo directamente
+    if (date instanceof Date) return date;
+    
+    // Si es string, crear Date de forma consistente
+    return new Date(date);
+  };
+
   // Filtrar propuestas según el filtro y término de búsqueda
   const filteredProposals = proposals.filter(proposal => {
     // Aplicar filtro por estado
@@ -114,7 +123,7 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
               description={proposal.description}
               creator={proposal.creator}
               voteCount={proposal.voteCount}
-              deadline={new Date(proposal.deadline)}
+              deadline={normalizeDate(proposal.deadline)}
               status={proposal.status}
               onVote={onVote}
               userVoted={proposal.userVoted}
