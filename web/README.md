@@ -77,16 +77,16 @@ forge create src/DocumentRegistry.sol:DocumentRegistry \
 
 
 # Verificar código de contrato
-cast code 0x5FbDB2315678afecb367f032d93F642f64180aa3 --rpc-url http://localhost:8545
+cast code 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:8545
 
 # Verificar nonce de cuenta
-cast nonce 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:8545
+cast nonce  --rpc-url http://localhost:8545
 
 # Calcular dirección de contrato
 cast compute-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --nonce 0
 
 # Llamar función view
-cast call 0x5FbDB2315678afecb367f032d93F642f64180aa3 "getDocumentInfo(bytes32)" 0x0000000000000000000000000000000000000000000000000000000000000000 --rpc-url http://localhost:8545
+cast call 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 "getDocumentInfo(bytes32)" 0x0000000000000000000000000000000000000000000000000000000000000000 --rpc-url http://localhost:8545
 
 # Ver balance
 cast balance 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url http://localhost:8545

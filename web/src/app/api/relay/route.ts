@@ -61,7 +61,7 @@ async function validateDAOVotingRequest(
     const votingPower = await daoVoting.getVotingPower(userAddress);
     console.log('  Voting power:', votingPower.toString());
     
-    if (votingPower === 0n) {
+    if (votingPower === 0) {
       throw new Error('User has no voting power');
     }
 
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Ejecutar la meta-transacción
-    const gasLimit = gasEstimate ? gasEstimate * 2n : 3000000n;
+    const gasLimit = gasEstimate ? gasEstimate * 2 : 3000000;
     
     console.log('🚀 Executing meta-transaction...');
     const tx = await forwarder.execute(forwardRequest, signature, {
