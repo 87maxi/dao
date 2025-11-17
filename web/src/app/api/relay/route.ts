@@ -3,8 +3,8 @@ import MinimalForwarder  from '@/contracts/abis/MinimalForwarder.json';
 import DAOVoting   from '@/contracts/abis/DAOVoting.json';
 
 
-const FORWARDER_ADDRESS = '0xYourForwarderContractAddress';
-const DAO_VOTING_ADDRESS = '0xYourDAOVotingContractAddress';
+const FORWARDER_ADDRESS = '0x5fbdb2315678afecb367f032d93f642f64180aa3';
+const DAO_VOTING_ADDRESS = '0xe7f1725e7734ce288f8367e1bb143e90bb3f0512';
 
 export interface ForwardRequest {
   from: string;
