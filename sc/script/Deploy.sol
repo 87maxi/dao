@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "forge-std/Script.sol";
-import "../src/DAOVoting.sol";
-import "../src/MinimalForwarder.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {DAOVoting} from "../src/DAOVoting.sol";
+import {MinimalForwarder} from "../src/MinimalForwarder.sol";
 
 // Importamos el MockERC20 del test
 contract MockERC20 {

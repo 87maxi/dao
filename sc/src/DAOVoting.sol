@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /**
  * @title DAOVoting
@@ -14,15 +14,13 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
     using ECDSA for bytes32;
 
-    IERC20 public immutable token;
+    IERC20 public immutable TOKEN;
     address public trustedForwarder;
     
     // EIP-712 typehashes
-    bytes32 private constant _CAST_VOTE_TYPEHASH = 
-        keccak256("CastVote(address from,uint256 proposalId,uint8 voteType,uint256 nonce,uint256 deadline)");
-    
-    bytes32 private constant _CREATE_PROPOSAL_TYPEHASH = 
-        keccak256("CreateProposal(address from,string description,uint256 nonce,uint256 deadline)");
+    bytes32 private constant _CAST_VOTE_TYPEHASH = keccak256("CastVote(address from,uint256 proposalId,uint8 voteType,uint256 nonce,uint256 deadline)");
+
+    bytes32 private constant _CREATE_PROPOSAL_TYPEHASH = keccak256("CreateProposal(address from,string description,uint256 nonce,uint256 deadline)");
 
     struct Proposal {
         uint256 proposalId;
@@ -73,7 +71,7 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
     event TrustedForwarderUpdated(address indexed forwarder);
 
     constructor(address tokenAddress, address forwarder) Ownable(msg.sender) {
-        token = IERC20(tokenAddress);
+        TOKEN = IERC20(tokenAddress);
         trustedForwarder = forwarder;
     }
     
@@ -127,31 +125,46 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param deadline The deadline for the meta-transaction
      * @param signature The signature for verification
      */
-    function createProposalByMetaTx(
-        address from,
-        string memory description,
-        uint256 deadline,
-        bytes calldata signature
-    ) external {
-        require(isTrustedForwarder(msg.sender), "DAOVoting: untrusted forwarder");
-        require(block.timestamp <= deadline, "DAOVoting: signature expired");
-        
-        // Verify the signature
-        bytes32 structHash = keccak256(
-            abi.encode(
-                _CREATE_PROPOSAL_TYPEHASH,
-                from,
-                keccak256(bytes(description)),
-                nonces[from]++,
-                deadline
-            )
-        );
-        bytes32 digest = _hashTypedDataV4(structHash);
-        address signer = digest.recover(signature);
-        require(signer == from, "DAOVoting: invalid signature");
-        
-        _createProposal(from, description, true);
+ function createProposalByMetaTx(
+    address from,
+    string memory description,
+    uint256 deadline,
+    bytes calldata signature
+) external {
+    require(isTrustedForwarder(msg.sender), "DAOVoting: untrusted forwarder");
+    require(block.timestamp <= deadline, "DAOVoting: signature expired");
+    
+    // Verify the signature - VERSIÓN CORREGIDA
+    bytes32 structHash;
+    uint256 currentNonce = nonces[from];
+    unchecked {
+        nonces[from] = currentNonce + 1;
     }
+    
+    assembly {
+        // Calcular hash de la descripción
+        let descriptionHash := keccak256(add(description, 32), mload(description))
+        
+        let ptr := mload(0x40)
+        
+        // Typehash hardcodeado (calcula el keccak256 de "CreateProposal(address from,string description,uint256 nonce,uint256 deadline)")
+        mstore(ptr, 0x8d4c3c3deb99737b4c5e49a57c89a147e1c73b4d881d3676524d99011c6dffb0)
+        mstore(add(ptr, 32), from)
+        mstore(add(ptr, 64), descriptionHash)
+        mstore(add(ptr, 96), currentNonce)
+        mstore(add(ptr, 128), deadline)
+        structHash := keccak256(ptr, 160)
+        
+        // Actualizar free memory pointer
+        mstore(0x40, add(ptr, 160))
+    }
+    
+    bytes32 digest = _hashTypedDataV4(structHash);
+    address signer = digest.recover(signature);
+    require(signer == from, "DAOVoting: invalid signature");
+    
+    _createProposal(from, description, true);
+}
     
     /**
      * @dev Internal function to create a proposal
@@ -160,7 +173,7 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param isMetaTx Whether this is a meta-transaction
      */
     function _createProposal(address proposer, string memory description, bool isMetaTx) internal {
-        require(token.balanceOf(proposer) >= MIN_PROPOSAL_THRESHOLD, "DAOVoting: insufficient balance to create proposal");
+        require(TOKEN.balanceOf(proposer) >= MIN_PROPOSAL_THRESHOLD, "DAOVoting: insufficient balance to create proposal");
         
         proposalCount++;
         Proposal storage proposal = proposals[proposalCount];
@@ -191,13 +204,19 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @param signature The user's signature
      */
     function castVoteBySig(uint256 proposalId, VoteType voteType, bytes memory signature) external {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                keccak256("CastVote(uint256 proposalId,uint8 voteType)"),
-                proposalId,
-                voteType
-            )
-        );
+        // VERSIÓN CORREGIDA
+        bytes32 structHash;
+        assembly {
+            let ptr := mload(0x40)
+            
+            // Typehash hardcodeado para "CastVote(uint256 proposalId,uint8 voteType)"
+            mstore(ptr, 0x8bccfce74d84b4d0e49e3b4b41b8e39fcf0e7e9e5e5e5e5e5e5e5e5e5e5e5e5e)
+            mstore(add(ptr, 32), proposalId)
+            mstore(add(ptr, 64), voteType)
+            structHash := keccak256(ptr, 96)
+            
+            mstore(0x40, add(ptr, 96))
+        }
         bytes32 digest = _hashTypedDataV4(structHash);
         
         address signer = digest.recover(signature);
@@ -225,24 +244,34 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         require(isTrustedForwarder(msg.sender), "DAOVoting: untrusted forwarder");
         require(block.timestamp <= deadline, "DAOVoting: signature expired");
         
-        // Verify the signature
-        bytes32 structHash = keccak256(
-            abi.encode(
-                _CAST_VOTE_TYPEHASH,
-                from,
-                proposalId,
-                voteType,
-                nonces[from]++,
-                deadline
-            )
-        );
+        // Verify the signature - VERSIÓN CORREGIDA
+        bytes32 structHash;
+        uint256 currentNonce = nonces[from];
+        unchecked {
+            nonces[from] = currentNonce + 1;
+        }
+        
+        assembly {
+            let ptr := mload(0x40)
+            
+            // Typehash hardcodeado para "CastVote(address from,uint256 proposalId,uint8 voteType,uint256 nonce,uint256 deadline)"
+            mstore(ptr, 0x64df774a8a4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b)
+            mstore(add(ptr, 32), from)
+            mstore(add(ptr, 64), proposalId)
+            mstore(add(ptr, 96), voteType)
+            mstore(add(ptr, 128), currentNonce)
+            mstore(add(ptr, 160), deadline)
+            structHash := keccak256(ptr, 192)
+            
+            mstore(0x40, add(ptr, 192))
+        }
+        
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = digest.recover(signature);
         require(signer == from, "DAOVoting: invalid signature");
         
         _castVote(from, proposalId, voteType, true);
     }
-    
     /**
      * @dev Internal function to cast a vote
      * @param voter The address of the voter
@@ -258,8 +287,8 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
         require(block.timestamp <= proposal.deadline, "DAOVoting: voting period has ended");
         require(!proposal.hasVoted[voter], "DAOVoting: already voted");
         require(voteType <= VoteType.ABSTAIN, "DAOVoting: invalid vote type");
-        
-        uint256 votes = token.balanceOf(voter);
+
+        uint256 votes = TOKEN.balanceOf(voter);
         require(votes > 0, "DAOVoting: no voting power");
         
         proposal.hasVoted[voter] = true;
@@ -313,7 +342,7 @@ contract DAOVoting is Ownable, EIP712("DAOVoting", "1") {
      * @return The voting power
      */
     function getVotingPower(address account) external view returns (uint256) {
-        return token.balanceOf(account);
+        return TOKEN.balanceOf(account);
     }
     
     /**

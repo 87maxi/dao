@@ -1,3 +1,4 @@
+// utils/rpc-provider.ts
 import { RPCRequest, RPCResponse, RPCCallback, IRPCProvider } from './types/rpc';
 
 export class RPCProvider implements IRPCProvider {
@@ -7,8 +8,9 @@ export class RPCProvider implements IRPCProvider {
     this.rpcUrl = rpcUrl;
   }
 
-  // Método principal para enviar requests RPC
-   send = (method: string, params: any[] = [], callback: RPCCallback): void => {
+  // ========== MÉTODO PRINCIPAL CON PROMISE ==========
+
+  async sendPromise(method: string, params: any[] = []): Promise<any> {
     const request: RPCRequest = {
       jsonrpc: '2.0',
       id: Date.now(),
@@ -16,166 +18,311 @@ export class RPCProvider implements IRPCProvider {
       params: params.length > 0 ? params : undefined
     };
 
-    fetch(this.rpcUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(request)
-    })
-    .then(async (response: Response) => {
+    console.log('📡 [RPC] Enviando request:', { 
+      method, 
+      params,
+      url: this.rpcUrl 
+    });
+
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(request)
+      });
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return await response.json();
-    })
-    .then((data: RPCResponse) => {
+
+      const data: RPCResponse = await response.json();
+      
+      console.log('✅ [RPC] Respuesta recibida:', { 
+        method, 
+        result: data.result,
+        error: data.error 
+      });
+
       if (data.error) {
-        callback(new Error(`RPC Error: ${data.error.message} (code: ${data.error.code})`));
-      } else {
-        callback(null, data.result);
+        throw new Error(`RPC Error: ${data.error.message} (code: ${data.error.code})`);
       }
-    })
-    .catch((error: Error) => {
-      callback(new Error(`Network error: ${error.message}`));
-    });
+
+      return data.result;
+
+    } catch (error: any) {
+      console.error('❌ [RPC Error]:', { 
+        method, 
+        error: error.message,
+        url: this.rpcUrl 
+      });
+      throw new Error(`Network error: ${error.message}`);
+    }
   }
 
-  // ========== MÉTODOS ETHEREUM ==========
+  // ========== MÉTODO ORIGINAL CON CALLBACK (para compatibilidad) ==========
 
-  getBlockNumber = (callback: RPCCallback): void => {
-    this.send('eth_blockNumber', [], (error, result) => {
-      if (error) return callback(error);
-      callback(null, result);
-    });
+  send = (method: string, params: any[] = [], callback: RPCCallback): void => {
+    this.sendPromise(method, params)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
   }
 
-  getBalance = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
-    this.send('eth_getBalance', [address, block], callback);
+  // ========== MÉTODOS ETHEREUM CON PROMISES ==========
+
+  async getBlockNumber(): Promise<string> {
+    return await this.sendPromise('eth_blockNumber');
   }
 
-  getChainId = (callback: RPCCallback): void => {
-    this.send('eth_chainId', [], (error, result) => {
-      if (error) return callback(error);
-      callback(null, result);
-    });
+  async getBalance(address: string, block: string = 'latest'): Promise<string> {
+    return await this.sendPromise('eth_getBalance', [address, block]);
   }
 
-  getGasPrice = (callback: RPCCallback): void => {
-    this.send('eth_gasPrice', [], callback);
+  async getChainId(): Promise<string> {
+    return await this.sendPromise('eth_chainId');
   }
 
-  getTransactionCount = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
-    this.send('eth_getTransactionCount', [address, block], callback);
+  async getGasPrice(): Promise<string> {
+    return await this.sendPromise('eth_gasPrice');
   }
 
-  getCode = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
-    this.send('eth_getCode', [address, block], callback);
+  async getTransactionCount(address: string, block: string = 'latest'): Promise<string> {
+    return await this.sendPromise('eth_getTransactionCount', [address, block]);
   }
 
-  getStorageAt = (address: string, position: string, callback: RPCCallback, block: string = 'latest'): void => {
-    this.send('eth_getStorageAt', [address, position, block], callback);
+  async getCode(address: string, block: string = 'latest'): Promise<string> {
+    return await this.sendPromise('eth_getCode', [address, block]);
   }
 
-  // ========== MÉTODOS DE TRANSACCIONES ==========
-
-  call = (transaction: any, callback: RPCCallback, block: string = 'latest'): void => {
-    this.send('eth_call', [transaction, block], callback);
+  async getStorageAt(address: string, position: string, block: string = 'latest'): Promise<string> {
+    return await this.sendPromise('eth_getStorageAt', [address, position, block]);
   }
 
-  estimateGas = (transaction: any, callback: RPCCallback): void => {
-    this.send('eth_estimateGas', [transaction], callback);
+  // ========== MÉTODOS DE TRANSACCIONES CON PROMISES ==========
+
+  async call(transaction: any, block: string = 'latest'): Promise<string> {
+    return await this.sendPromise('eth_call', [transaction, block]);
   }
 
-  sendRawTransaction = (signedTransaction: string, callback: RPCCallback): void => {
-    this.send('eth_sendRawTransaction', [signedTransaction], callback);
+  async estimateGas(transaction: any): Promise<string> {
+    return await this.sendPromise('eth_estimateGas', [transaction]);
   }
 
-  getTransactionReceipt = (transactionHash: string, callback: RPCCallback): void => {
-    this.send('eth_getTransactionReceipt', [transactionHash], callback);
+  async sendRawTransaction(signedTransaction: string): Promise<string> {
+    return await this.sendPromise('eth_sendRawTransaction', [signedTransaction]);
   }
 
-  // ========== MÉTODOS DE BLOQUES ==========
-
-  getBlockByNumber = (blockNumber: string, includeTransactions: boolean = false, callback: RPCCallback): void => {
-    this.send('eth_getBlockByNumber', [blockNumber, includeTransactions], callback);
+  async getTransactionReceipt(transactionHash: string): Promise<any> {
+    return await this.sendPromise('eth_getTransactionReceipt', [transactionHash]);
   }
 
-  getBlockByHash = (blockHash: string, includeTransactions: boolean = false, callback: RPCCallback): void => {
-    this.send('eth_getBlockByHash', [blockHash, includeTransactions], callback);
+  // ========== MÉTODOS DE BLOQUES CON PROMISES ==========
+
+  async getBlockByNumber(blockNumber: string, includeTransactions: boolean = false): Promise<any> {
+    return await this.sendPromise('eth_getBlockByNumber', [blockNumber, includeTransactions]);
   }
 
-  // ========== MÉTODOS DE FILTROS ==========
-
-  newBlockFilter = (callback: RPCCallback): void => {
-    this.send('eth_newBlockFilter', [], callback);
+  async getBlockByHash(blockHash: string, includeTransactions: boolean = false): Promise<any> {
+    return await this.sendPromise('eth_getBlockByHash', [blockHash, includeTransactions]);
   }
 
-  getFilterChanges = (filterId: string, callback: RPCCallback): void => {
-    this.send('eth_getFilterChanges', [filterId], callback);
+  // ========== MÉTODOS DE FILTROS CON PROMISES ==========
+
+  async newBlockFilter(): Promise<string> {
+    return await this.sendPromise('eth_newBlockFilter');
   }
 
-  // ========== MÉTODOS DE CUENTAS ==========
-
-  getAccounts = (callback: RPCCallback): void => {
-    this.send('eth_accounts', [], callback);
+  async getFilterChanges(filterId: string): Promise<any[]> {
+    return await this.sendPromise('eth_getFilterChanges', [filterId]);
   }
 
-  // ========== MÉTODOS DE RED ==========
+  // ========== MÉTODOS DE CUENTAS CON PROMISES ==========
 
-  netVersion = (callback: RPCCallback): void => {
-    this.send('net_version', [], callback);
+  async getAccounts(): Promise<string[]> {
+    return await this.sendPromise('eth_accounts');
   }
 
-  listening = (callback: RPCCallback): void => {
-    this.send('net_listening', [], callback);
+  // ========== MÉTODOS DE RED CON PROMISES ==========
+
+  async netVersion(): Promise<string> {
+    return await this.sendPromise('net_version');
   }
 
-  peerCount = (callback: RPCCallback): void => {
-    this.send('net_peerCount', [], callback);
+  async listening(): Promise<boolean> {
+    return await this.sendPromise('net_listening');
   }
 
-  // ========== MÉTODOS UTILITARIOS ==========
-
-  protocolVersion = (callback: RPCCallback): void => {
-    this.send('eth_protocolVersion', [], callback);
+  async peerCount(): Promise<string> {
+    return await this.sendPromise('net_peerCount');
   }
 
-  syncing = (callback: RPCCallback): void => {
-    this.send('eth_syncing', [], callback);
+  // ========== MÉTODOS UTILITARIOS CON PROMISES ==========
+
+  async protocolVersion(): Promise<string> {
+    return await this.sendPromise('eth_protocolVersion');
   }
 
-  coinbase = (callback: RPCCallback): void => {
-    this.send('eth_coinbase', [], callback);
+  async syncing(): Promise<any> {
+    return await this.sendPromise('eth_syncing');
   }
 
-  mining = (callback: RPCCallback): void => {
-    this.send('eth_mining', [], callback);
+  async coinbase(): Promise<string> {
+    return await this.sendPromise('eth_coinbase');
   }
 
-  hashrate = (callback: RPCCallback): void => {
-    this.send('eth_hashrate', [], callback);
+  async mining(): Promise<boolean> {
+    return await this.sendPromise('eth_mining');
+  }
+
+  async hashrate(): Promise<string> {
+    return await this.sendPromise('eth_hashrate');
+  }
+
+  // ========== MÉTODOS CON CALLBACKS (para mantener compatibilidad) ==========
+
+  getBlockNumberCallback = (callback: RPCCallback): void => {
+    this.getBlockNumber()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getBalanceCallback = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
+    this.getBalance(address, block)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getChainIdCallback = (callback: RPCCallback): void => {
+    this.getChainId()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getGasPriceCallback = (callback: RPCCallback): void => {
+    this.getGasPrice()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getTransactionCountCallback = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
+    this.getTransactionCount(address, block)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getCodeCallback = (address: string, callback: RPCCallback, block: string = 'latest'): void => {
+    this.getCode(address, block)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getStorageAtCallback = (address: string, position: string, callback: RPCCallback, block: string = 'latest'): void => {
+    this.getStorageAt(address, position, block)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  callCallback = (transaction: any, callback: RPCCallback, block: string = 'latest'): void => {
+    this.call(transaction, block)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  estimateGasCallback = (transaction: any, callback: RPCCallback): void => {
+    this.estimateGas(transaction)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  sendRawTransactionCallback = (signedTransaction: string, callback: RPCCallback): void => {
+    this.sendRawTransaction(signedTransaction)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getTransactionReceiptCallback = (transactionHash: string, callback: RPCCallback): void => {
+    this.getTransactionReceipt(transactionHash)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getBlockByNumberCallback = (blockNumber: string, includeTransactions: boolean = false, callback: RPCCallback): void => {
+    this.getBlockByNumber(blockNumber, includeTransactions)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getBlockByHashCallback = (blockHash: string, includeTransactions: boolean = false, callback: RPCCallback): void => {
+    this.getBlockByHash(blockHash, includeTransactions)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  newBlockFilterCallback = (callback: RPCCallback): void => {
+    this.newBlockFilter()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getFilterChangesCallback = (filterId: string, callback: RPCCallback): void => {
+    this.getFilterChanges(filterId)
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  getAccountsCallback = (callback: RPCCallback): void => {
+    this.getAccounts()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  netVersionCallback = (callback: RPCCallback): void => {
+    this.netVersion()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  listeningCallback = (callback: RPCCallback): void => {
+    this.listening()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  peerCountCallback = (callback: RPCCallback): void => {
+    this.peerCount()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  protocolVersionCallback = (callback: RPCCallback): void => {
+    this.protocolVersion()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  syncingCallback = (callback: RPCCallback): void => {
+    this.syncing()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  coinbaseCallback = (callback: RPCCallback): void => {
+    this.coinbase()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  miningCallback = (callback: RPCCallback): void => {
+    this.mining()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
+  }
+
+  hashrateCallback = (callback: RPCCallback): void => {
+    this.hashrate()
+      .then(result => callback(null, result))
+      .catch(error => callback(error, null));
   }
 }
-
-
-
-
-/*
-// utils/ethereum.ts
-//import { RPCProvider } from '@/lib/rpc-provider';
-
-// Instancia global (opcional)
-export const createEthereumProvider = (rpcUrl: string = 'http://127.0.0.1:8545'): RPCProvider => {
-  return new RPCProvider(rpcUrl);
-};
-
-// Instancia preconfigurada para desarrollo
-export const localProvider = createEthereumProvider('http://127.0.0.1:8545').getGasPrice();
-
-// Instancia para diferentes redes
-export const mainnetProvider = createEthereumProvider('https://mainnet.infura.io/v3/your-project-id');
-export const sepoliaProvider = createEthereumProvider('https://sepolia.infura.io/v3/your-project-id');
-
-*/

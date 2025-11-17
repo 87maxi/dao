@@ -3,6 +3,12 @@ src = "src"
 out = "out"
 libs = ["lib"]
 
+remappings = [
+    '@openzeppelin/=lib/openzeppelin-contracts/',
+    '@forge-std/=lib/forge-std/src/'
+]
+
+
 [etherscan]
 default = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
 
