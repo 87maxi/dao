@@ -244,7 +244,8 @@ contract DAOVotingTest is Test {
         // USER1 transfiere parte de sus tokens a USER2 (después de votar)
         uint256 transferAmount = 0.5 ether;
         vm.prank(USER1);
-        token.transfer(USER2, transferAmount);
+        bool success = token.transfer(USER2, transferAmount);
+        require(success, "Transfer failed");
         
         // Verificar que la transferencia fue exitosa
         assertEq(token.balanceOf(USER1), INITIAL_BALANCE - transferAmount);

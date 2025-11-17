@@ -3,78 +3,112 @@ import { NextRequest, NextResponse } from 'next/server';
 import { RPCProvider } from '@/utils/rpc';
 
 export async function GET(request: NextRequest) {
-  console.log('🔵 [DEBUG] Endpoint llamado');
+  console.log('🔵 [ANVIL] Obteniendo información completa');
   
   try {
     const rpcUrl = 'http://127.0.0.1:8545';
     const provider = new RPCProvider(rpcUrl);
     
-    console.log('📡 [RPC] Probando conexión con:', rpcUrl);
-
-    // Test múltiples métodos RPC
-    const [chainId, blockNumber, gasPrice, accounts] = await Promise.all([
+    // Obtener información básica de la red
+    const [chainId, blockNumber, accounts] = await Promise.all([
       provider.getChainId(),
       provider.getBlockNumber(),
-      provider.getGasPrice(),
-      provider.getAccounts().catch(() => []) // accounts puede fallar en algunos nodos
+      provider.getAccounts()
     ]);
-
-    console.log('✅ [RPC] Datos obtenidos exitosamente:', {
-      chainId,
-      blockNumber,
-      gasPrice,
-      accountsCount: accounts.length
-    });
-
-    // Probar balance con una address común de testing
-    const testAddress = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266';
-    let balance = '0x0';
     
-    try {
-      balance = await provider.getBalance(testAddress);
-      console.log('💰 [RPC] Balance obtenido:', balance);
-    } catch (balanceError) {
-      console.log('⚠️ [RPC] No se pudo obtener balance (normal en algunos nodos)');
-    }
-
-    // Información adicional de la red
-    const [netVersion, isListening, peerCount] = await Promise.all([
-      provider.netVersion().catch(() => 'unknown'),
-      provider.listening().catch(() => false),
-      provider.peerCount().catch(() => '0x0')
+    // Métodos específicos de Anvil
+    console.log('🔄 [Anvil] Obteniendo información específica...');
+    
+    const [impersonatedAccounts, autoImpersonate, miningState] = await Promise.all([
+      provider.sendPromise('anvil_impersonateAccount', []).catch(() => []),
+      provider.sendPromise('anvil_getAutoMine', []).catch(() => null),
+      provider.sendPromise('eth_mining', []).catch(() => null)
     ]);
-
+    
+    // Buscar contratos usando múltiples métodos
+    console.log('🔄 [Anvil] Buscando contratos deployados...');
+    
+    const contractsMethod1 = await findContractsByCode(provider, accounts);
+    const contractsMethod2 = await findContractsByState(provider);
+    
+    // Combinar y eliminar duplicados
+    const allContracts = [...contractsMethod1, ...contractsMethod2];
+    const uniqueContracts = allContracts.filter((contract, index, self) => 
+      index === self.findIndex(c => c.address === contract.address)
+    );
+    
     return NextResponse.json({
       success: true,
-      rpc_url: rpcUrl,
-      connection: 'successful',
-      data: {
+      network: {
         chain_id: parseInt(chainId, 16),
-        chain_id_hex: chainId,
         block_number: parseInt(blockNumber, 16),
-        block_number_hex: blockNumber,
-        gas_price: parseInt(gasPrice, 16),
-        gas_price_hex: gasPrice,
-        test_address_balance: balance,
-        accounts: accounts,
-        net_version: netVersion,
-        listening: isListening,
-        peer_count: parseInt(peerCount, 16),
-        timestamp: new Date().toISOString(),
-        
-      }
+        accounts_count: accounts.length,
+        accounts: accounts.slice(0, 10) // Mostrar solo las primeras 10
+      },
+      anvil_specific: {
+        impersonated_accounts: impersonatedAccounts,
+        auto_mine: autoImpersonate,
+        mining: miningState
+      },
+      contracts: {
+        total: uniqueContracts.length,
+        list: uniqueContracts
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error: any) {
-    console.error('❌ [DEBUG Error]:', error);
+    console.error('❌ [ANVIL Error]:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+async function findContractsByCode(provider: RPCProvider, accounts: string[]) {
+  const contracts = [];
+  
+  // Revisar todas las cuentas conocidas
+  for (const address of accounts) {
+    try {
+      const code = await provider.getCode(address);
+      if (code && code !== '0x' && code !== '0x0') {
+        const balance = await provider.getBalance(address);
+        contracts.push({
+          address,
+          balance,
+          code_size: (code.length - 2) / 2,
+          type: 'contract'
+        });
+      }
+    } catch (error) {
+      // Ignorar errores en cuentas individuales
+    }
+  }
+  
+  return contracts;
+}
+
+async function findContractsByState(provider: RPCProvider) {
+  try {
+    const state = await provider.sendPromise('anvil_dumpState', []);
+    const contracts = [];
     
-    return NextResponse.json({
-      success: false,
-      error: error.message,
-      rpc_url: 'http://127.0.0.1:8545',
-      connection: 'failed',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      timestamp: new Date().toISOString()
-    }, { status: 500 });
+    if (state) {
+      for (const [address, accountData] of Object.entries(state)) {
+        const code = await provider.getCode(address);
+        if (code && code !== '0x' && code !== '0x0') {
+          contracts.push({
+            address,
+            code_size: (code.length - 2) / 2,
+            storage_root: (accountData as any).storageRoot || 'N/A',
+            type: 'state_contract'
+          });
+        }
+      }
+    }
+    
+    return contracts;
+  } catch (error) {
+    console.log('⚠️ anvil_dumpState no disponible');
+    return [];
   }
 }
