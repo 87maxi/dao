@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import useWeb3 from '../hooks/useWeb3'; // Ajusta la ruta según tu estructura
-
+import {BrowserRPCProvider} from '../utils/rpc'
 interface WalletInfo {
   address: string;
   balance: string;
@@ -23,6 +23,9 @@ const ANVIL_CONFIG = {
     '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC'
   ]
 };
+
+
+
 
 /**
  * Componente para conectar y desconectar la billetera del usuario
@@ -51,9 +54,11 @@ export default function ConnectWallet({
 
   const [showWalletDetails, setShowWalletDetails] = useState(false);
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
-
+  const rpc = new BrowserRPCProvider(ANVIL_CONFIG.RPC_URL)
   // Sincronizar el estado de conexión con el hook
   useEffect(() => {
+    
+    
     if (isConnected && account && network) {
       const info: WalletInfo = {
         address: account.address,
