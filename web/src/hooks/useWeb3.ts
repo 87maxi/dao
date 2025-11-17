@@ -278,6 +278,46 @@ export default function useWeb3(): UseWeb3Returns {
   /**
    * CAMBIAR A LA RED DE ANVIL
    */
+
+  // export function WalletSelector() {
+  // const [isConnected, setIsConnected] = useState(false);
+  // const [showDropdown, setShowDropdown] = useState(false);
+  // const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  // const [anvilWallets, setAnvilWallets] = useState<AnvilWallet[]>([]);
+  // const [error, setError] = useState<string | null>(null);
+
+  // useEffect(() => {
+  //   const initializeAnvilWallets = async () => {
+  //     try {
+  //       const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+        
+  //       // Create signer for each Anvil account
+  //       const wallets = anvilAccounts.map(account => {
+  //         const signer = new ethers.Wallet(account.privateKey, provider);
+  //         return {
+  //           account: {
+  //             address: account.address,
+  //             label: account.label
+  //           },
+  //           signer
+  //         };
+  //       });
+        
+  //       setAnvilWallets(wallets);
+  //       setIsConnected(true);
+  //       setSelectedAccount(wallets[0].account.address);
+  //     } catch (err) {
+  //       console.error('Failed to connect to Anvil:', err);
+  //       setError('Failed to connect to Anvil. Make sure Anvil is running on http://127.0.0.1:8545');
+  //       setIsConnected(false);
+  //     }
+  //   };
+
+  //   initializeAnvilWallets();
+  // }, []);
+
+
+
   const switchToAnvil = useCallback(async (): Promise<boolean> => {
     if (!isMetaMaskInstalled) {
       console.log('❌ No se puede cambiar red: Wallet no instalado');

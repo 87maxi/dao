@@ -123,8 +123,7 @@ export default function ProposalCard({
             {userVoted ? 'Already Voted' : 'Vote Now'}
           </button>
           
-          <button className="py-3 px-4 rounded-lg font-semibold text-gray-700 bg-gray-100 
-                  hover:bg-gray-200 transition-colors duration-200 border border-gray-300">
+          <button className="py-3 px-4 rounded-lg font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors duration-200 border border-gray-300">
             View Details
           </button>
         </div>

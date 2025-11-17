@@ -24,16 +24,6 @@ const ANVIL_CONFIG = {
   ]
 };
 
-const LOCAL_NETWORKS = {
-  '0x7A69': 'Anvil Local Network', // 31337
-  '0x539': 'Ganache Local Network', // 1337
-  '0x1': 'Ethereum Mainnet - NOT ALLOWED',
-  '0x5': 'Goerli Testnet - NOT ALLOWED',
-  '0xaa36a7': 'Sepolia Testnet - NOT ALLOWED'
-};
-
-const ALLOWED_CHAIN_IDS = ['0x7A69', '0x539'];
-
 /**
  * Componente para conectar y desconectar la billetera del usuario
  * Solo permite conexión con Anvil y redes locales
