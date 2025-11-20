@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RPCProvider } from '@/utils/rpc';
+import { Env } from '@/utils/config'
 
 
 
@@ -11,8 +12,8 @@ export async function GET(request: NextRequest) {
   console.log('🔵 [DEBUG] Obteniendo contratos deployados en Anvil');
   
   try {
-    const rpcUrl = 'http://127.0.0.1:8545';
-    const provider = new RPCProvider(rpcUrl);
+    const rpcUrl  =  Env.RPC_URL;
+    const provider = new RPCProvider( rpcUrl);
     
     // Método específico de Anvil para obtener el estado
     console.log('🔄 [Anvil] Obteniendo estado completo...');

@@ -1,12 +1,13 @@
 // app/api/debug/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { RPCProvider } from '@/utils/rpc';
+import  { Env } from '@/utils/config'
 
 export async function GET(request: NextRequest) {
   console.log('🔵 [ANVIL] Obteniendo información completa');
   
   try {
-    const rpcUrl = 'http://127.0.0.1:8545';
+    const rpcUrl = Env.RPC_URL;
     const provider = new RPCProvider(rpcUrl);
     
     // Obtener información básica de la red

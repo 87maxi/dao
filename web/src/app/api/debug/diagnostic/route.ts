@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RPCProvider } from '@/utils/rpc';
+import  { Env } from '@/utils/config'
 
 
 export async function GET(request: NextRequest) {
   try {
-    const provider = new RPCProvider('http://127.0.0.1:8545');
+    const provider = new RPCProvider(Env.RPC_URL);
     
     // Información básica de la red
     const [chainId, blockNumber, accounts] = await Promise.all([

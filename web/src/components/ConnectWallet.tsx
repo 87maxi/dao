@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import useWeb3 from '../hooks/useWeb3'; // Ajusta la ruta según tu estructura
-//import {BrowserRPCProvider} from '../utils/rpc'
+import useWeb3 from '@/hooks/useWeb3'; // Ajusta la ruta según tu estructura
+import { Env } from '@/utils/config'
+
+
 interface WalletInfo {
   address: string;
   balance: string;
@@ -12,9 +14,9 @@ interface WalletInfo {
 
 // Configuración para Anvil y redes locales
 const ANVIL_CONFIG = {
-  CHAIN_ID: '0x7A69', // 31337 en hexadecimal
+  CHAIN_ID: Env.CHAIN_ID, // 31337 en hexadecimal
   CHAIN_NAME: 'Anvil Local Network',
-  RPC_URL: 'http://127.0.0.1:8545',
+  RPC_URL: Env.RPC_URL,
   CURRENCY_SYMBOL: 'ETH',
   BLOCK_EXPLORER: '',
   ACCOUNTS: [

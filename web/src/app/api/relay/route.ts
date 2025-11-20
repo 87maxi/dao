@@ -1,10 +1,11 @@
 import { ethers } from 'ethers';
 import MinimalForwarder  from '@/contracts/abis/MinimalForwarder.json';
 import DAOVoting   from '@/contracts/abis/DAOVoting.json';
+import {Env } from '@/utils/config'
 
 
-const FORWARDER_ADDRESS = '0x5fbdb2315678afecb367f032d93f642f64180aa3';
-const DAO_VOTING_ADDRESS = '0xe7f1725e7734ce288f8367e1bb143e90bb3f0512';
+const FORWARDER_ADDRESS = Env.FORWARDER_CONTRACT_ADDRESS;
+const DAO_VOTING_ADDRESS = Env.DAO_VOTING_ADDRESS ;
 
 export interface ForwardRequest {
   from: string;
@@ -148,6 +149,8 @@ export async function createProposalForwardRequest(
     '0x' // signature placeholder
   ]);
 
+
+  
   const request: ForwardRequest = {
     from: userAddress,
     to: DAO_VOTING_ADDRESS,
@@ -157,6 +160,8 @@ export async function createProposalForwardRequest(
     deadline: deadline.toString(),
     data
   };
+
+  console.log(request)
 
   // Crear el mensaje para firmar (EIP-712)
   const domain = {

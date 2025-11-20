@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RPCProvider } from '@/utils/rpc';
+import { Env } from '@/utils/config'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,7 +8,7 @@ export async function GET(request: NextRequest) {
     const dataType = searchParams.get('type') || 'overview';
     const limit = parseInt(searchParams.get('limit') || '10');
     
-    const provider = new RPCProvider('http://127.0.0.1:8545');
+    const provider = new RPCProvider(Env.RPC_URL);
     
     switch (dataType) {
       case 'overview':
