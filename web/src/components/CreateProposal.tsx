@@ -1,5 +1,6 @@
 "use client";
 
+import { Result } from 'ethers';
 import { useState } from 'react';
 
 /**
@@ -81,14 +82,18 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
     setSubmitting(true);
     
     try {
-      await onCreateProposal(
+    await onCreateProposal(
         title, 
         description, 
         new Date(deadline),
         recipientAddress,
         isGasless
       );
-      
+       
+
+
+
+
       // Reiniciar el formulario
       setTitle('');
       setDescription('');

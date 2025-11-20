@@ -1,11 +1,8 @@
 import { ethers } from 'ethers';
-import MinimalForwarder  from '@/contracts/abis/MinimalForwarder.json';
-import DAOVoting   from '@/contracts/abis/DAOVoting.json';
-import {Env } from '@/utils/config'
-
-
-const FORWARDER_ADDRESS = Env.FORWARDER_CONTRACT_ADDRESS;
-const DAO_VOTING_ADDRESS = Env.DAO_VOTING_ADDRESS ;
+import { NextRequest, NextResponse } from 'next/server';
+import MinimalForwarder from '@/contracts/abis/MinimalForwarder.json';
+import DAOVoting from '@/contracts/abis/DAOVoting.json';
+import { Env } from '@/utils/config';
 
 export interface ForwardRequest {
   from: string;
@@ -28,41 +25,98 @@ export interface RelayResponse {
 }
 
 /**
- * Enviar transacción al relayer
+ * POST handler for relaying transactions to Anvil
  */
-export async function relayTransaction(
-  forwardRequest: ForwardRequest,
-  signature: string,
-  action: string
-): Promise<RelayResponse> {
+export async function POST(request: NextRequest) {
   try {
-    const response = await fetch('/api/relay', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        request: forwardRequest,
-        signature,
-        action
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || data.message || 'Failed to relay transaction');
+    const { request: forwardRequest, signature, action } = await request.json();
+    
+    // Validate required fields
+    if (!forwardRequest || !signature || !action) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Missing required fields: request, signature, or action' 
+        }, 
+        { status: 400 }
+      );
     }
-
-    return data;
-  } catch (error) {
-    console.error('Relay error:', error);
-    throw error;
+    
+    // Create provider connected to Anvil
+    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
+    
+    // Create contract instances
+    const forwarder = new ethers.Contract(
+      Env.FORWARDER_CONTRACT_ADDRESS,
+      MinimalForwarder,
+      provider
+    );
+    
+    // Get signer with relayer private key
+    const relayerWallet = new ethers.Wallet(Env.RELAYER_PRIVATE_KEY, provider);
+    
+    // Execute the transaction through the forwarder
+    const tx = await forwarder.connect(relayerWallet).execute(
+      forwardRequest,
+      signature
+    );
+    
+    // Wait for transaction to be mined
+    const receipt = await tx.wait();
+    
+    return NextResponse.json({
+      success: true,
+      txHash: tx.hash,
+      blockNumber: receipt?.blockNumber,
+      gasUsed: receipt?.gasUsed.toString(),
+      status: receipt?.status === 1 ? 'success' : 'failed'
+    });
+    
+  } catch (error: any) {
+    console.error('Relay transaction error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error.message || 'Failed to relay transaction',
+        details: error.stack 
+      }, 
+      { status: 500 }
+    );
   }
 }
 
 /**
- * Crear forward request para votar
+ * GET handler to check relayer status
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
+    const network = await provider.getNetwork();
+    
+    return NextResponse.json({
+      success: true,
+      status: 'active',
+      network: network.name,
+      chainId: network.chainId,
+      forwarderAddress: Env.FORWARDER_CONTRACT_ADDRESS,
+      daoVotingAddress: Env.DAO_VOTING_ADDRESS,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error('Relayer status check error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error.message 
+      }, 
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Create forward request for voting
  */
 export async function createVoteForwardRequest(
   userAddress: string,
@@ -70,14 +124,22 @@ export async function createVoteForwardRequest(
   voteType: number,
   deadline: number
 ): Promise<{ request: ForwardRequest; message: string }> {
-  const provider = new ethers.BrowserProvider((window as any).ethereum);
-  const forwarder = new ethers.Contract(FORWARDER_ADDRESS, MinimalForwarder, await provider.getSigner());
+  const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
+  const forwarder = new ethers.Contract(
+    Env.FORWARDER_CONTRACT_ADDRESS,
+    MinimalForwarder,
+    provider
+  );
   
-  // Obtener nonce
+  // Get nonce
   const nonce = await forwarder.getNonce(userAddress);
   
-  // Codificar datos para castVoteByMetaTx
-  const daoVoting = new ethers.Contract(DAO_VOTING_ADDRESS, DAOVoting);
+  // Encode data for castVoteByMetaTx
+  const daoVoting = new ethers.Contract(
+    Env.DAO_VOTING_ADDRESS,
+    DAOVoting,
+    provider
+  );
   const data = daoVoting.interface.encodeFunctionData('castVoteByMetaTx', [
     userAddress,
     proposalId,
@@ -88,7 +150,7 @@ export async function createVoteForwardRequest(
 
   const request: ForwardRequest = {
     from: userAddress,
-    to: DAO_VOTING_ADDRESS,
+    to: Env.DAO_VOTING_ADDRESS,
     value: '0',
     gas: '1000000',
     nonce: nonce.toString(),
@@ -96,12 +158,12 @@ export async function createVoteForwardRequest(
     data
   };
 
-  // Crear el mensaje para firmar (EIP-712)
+  // Create message for signing (EIP-712)
   const domain = {
-    name: 'DAOMinimalForwarder',
+    name: 'MinimalForwarder',
     version: '1',
-    chainId: (await provider.getNetwork()).chainId,
-    verifyingContract: FORWARDER_ADDRESS,
+    chainId: await provider.getNetwork().then(net => net.chainId),
+    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS,
   };
 
   const types = {
@@ -127,21 +189,29 @@ export async function createVoteForwardRequest(
 }
 
 /**
- * Crear forward request para crear propuesta
+ * Create forward request for creating proposal
  */
 export async function createProposalForwardRequest(
   userAddress: string,
   description: string,
   deadline: number
 ): Promise<{ request: ForwardRequest; message: string }> {
-  const provider = new ethers.BrowserProvider((window as any).ethereum);
-  const forwarder = new ethers.Contract(FORWARDER_ADDRESS, MinimalForwarder, await provider.getSigner());
+  const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
+  const forwarder = new ethers.Contract(
+    Env.FORWARDER_CONTRACT_ADDRESS,
+    MinimalForwarder,
+    provider
+  );
   
-  // Obtener nonce
+  // Get nonce
   const nonce = await forwarder.getNonce(userAddress);
   
-  // Codificar datos para createProposalByMetaTx
-  const daoVoting = new ethers.Contract(DAO_VOTING_ADDRESS, DAOVoting);
+  // Encode data for createProposalByMetaTx
+  const daoVoting = new ethers.Contract(
+    Env.DAO_VOTING_ADDRESS,
+    DAOVoting,
+    provider
+  );
   const data = daoVoting.interface.encodeFunctionData('createProposalByMetaTx', [
     userAddress,
     description,
@@ -149,11 +219,9 @@ export async function createProposalForwardRequest(
     '0x' // signature placeholder
   ]);
 
-
-  
   const request: ForwardRequest = {
     from: userAddress,
-    to: DAO_VOTING_ADDRESS,
+    to: Env.DAO_VOTING_ADDRESS,
     value: '0',
     gas: '1000000',
     nonce: nonce.toString(),
@@ -161,14 +229,12 @@ export async function createProposalForwardRequest(
     data
   };
 
-  console.log(request)
-
-  // Crear el mensaje para firmar (EIP-712)
+  // Create message for signing (EIP-712)
   const domain = {
-    name: 'DAOMinimalForwarder',
+    name: 'MinimalForwarder',
     version: '1',
-    chainId: (await provider.getNetwork()).chainId,
-    verifyingContract: FORWARDER_ADDRESS,
+    chainId: await provider.getNetwork().then(net => net.chainId),
+    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS,
   };
 
   const types = {
@@ -191,12 +257,4 @@ export async function createProposalForwardRequest(
   });
 
   return { request, message };
-}
-
-/**
- * Verificar estado del relayer
- */
-export async function checkRelayerStatus(): Promise<any> {
-  const response = await fetch('/api/relay');
-  return response.json();
 }

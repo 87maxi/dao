@@ -1,34 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { RPCProvider } from '@/utils/rpc';
-import { Env } from '@/utils/config'
-
-
+import { Env } from '@/utils/config';
+import { ethers } from 'ethers';
+import DAOVoting from '@/contracts/abis/DAOVoting.json';
 
 /**
  * Daemon endpoint to check and execute approved proposals
  * This should be called periodically (e.g., via cron job or interval)
  */
 export async function GET(request: NextRequest) {
-  console.log('🔵 [DEBUG] Obteniendo contratos deployados en Anvil');
+  console.log('🔵 [DEBUG] Checking proposals on Anvil');
   
   try {
-    const rpcUrl  =  Env.RPC_URL;
-    const provider = new RPCProvider( rpcUrl);
+    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
     
-    // Método específico de Anvil para obtener el estado
-    console.log('🔄 [Anvil] Obteniendo estado completo...');
-    const state = await provider.sendPromise('anvil_dumpState', []);
-
-    console.log('📋 [Anvil] Estado obtenido, procesando...');
+    // Get network information
+    const network = await provider.getNetwork();
     
-    // El estado contiene información sobre todas las cuentas y contratos
-    const contracts = await extractContractsFromState(provider, state);
+    // Create contract instance
+    const daoContract = new ethers.Contract(
+      Env.DAO_VOTING_ADDRESS,
+      DAOVoting,
+      provider
+    );
+    
+    // Get proposal count
+    const proposalCount = await daoContract.proposalCount();
+    
+    // Get all proposals
+    const proposals = [];
+    for (let i = 1; i <= proposalCount; i++) {
+      try {
+        const proposal = await daoContract.proposals(i);
+        const stats = await daoContract.getProposalStats(i);
+        const state = await daoContract.getProposalState(i);
+        
+        proposals.push({
+          id: i,
+          proposalId: proposal.proposalId.toString(),
+          proposer: proposal.proposer,
+          description: proposal.description,
+          forVotes: stats.forVotes.toString(),
+          againstVotes: stats.againstVotes.toString(),
+          abstainVotes: stats.abstainVotes.toString(),
+          createdAt: proposal.createdAt.toString(),
+          deadline: proposal.deadline.toString(),
+          executed: proposal.executed,
+          remainingTime: state.remainingTime.toString(),
+          totalVotes: stats.totalVotes.toString()
+        });
+      } catch (error) {
+        console.log(`Error fetching proposal ${i}:`, error);
+      }
+    }
     
     return NextResponse.json({
       success: true,
-      contracts_count: contracts.length,
-      contracts: contracts,
-      raw_state_sample: state ? Object.keys(state).slice(0, 3) : 'No state available',
+      network: network.name,
+      chainId: network.chainId,
+      rpcUrl: Env.RPC_URL,
+      daoVotingAddress: Env.DAO_VOTING_ADDRESS,
+      forwarderAddress: Env.FORWARDER_CONTRACT_ADDRESS,
+      proposalCount: proposalCount.toString(),
+      proposals: proposals,
       timestamp: new Date().toISOString()
     });
 
@@ -42,38 +75,4 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
-}
-
-async function extractContractsFromState(provider: RPCProvider, state: any) {
-  const contracts: any[] = [];
-  
-  if (!state) return contracts;
-  
-  // Iterar sobre todas las direcciones en el estado
-  for (const [address, accountData] of Object.entries(state)) {
-    try {
-      // Verificar si tiene código (es un contrato)
-      const code = await provider.getCode(address);
-      
-      if (code && code !== '0x' && code !== '0x0') {
-        // Obtener más información del contrato
-        const balance = await provider.getBalance(address);
-        const transactionCount = await provider.getTransactionCount(address);
-        
-        contracts.push({
-          address: address,
-          balance: balance,
-          balance_eth: parseInt(balance, 16) / 1e18,
-          code_size: (code.length - 2) / 2, // Tamaño en bytes
-          transaction_count: parseInt(transactionCount, 16),
-          is_contract: true,
-          storage_root: (accountData as any).storageRoot || 'N/A'
-        });
-      }
-    } catch (error) {
-      console.log(`⚠️ Error procesando address ${address}:`, error);
-    }
-  }
-  
-  return contracts;
 }

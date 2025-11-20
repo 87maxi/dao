@@ -13,16 +13,24 @@ export interface Proposal {
   creator: string;
   voteCount: number;
   deadline: string | Date;
-  status: 'active' | 'passed' | 'rejected' | 'pending';
+  status: 'active' | 'passed' | 'rejected' | 'pending' | 'executed';
   userVoted?: boolean;
+  forVotes?: number;
+  againstVotes?: number;
+  abstainVotes?: number;
 }
+
+/**
+ * Tipo de voto
+ */
+export type VoteType = 'FOR' | 'AGAINST' | 'ABSTAIN';
 
 /**
  * Props para el componente ProposalList
  */
 interface ProposalListProps {
   proposals: Proposal[];
-  onVote?: (id: number) => void;
+  onVote?: (proposalId: number, voteType: VoteType, isGasless?: boolean) => Promise<boolean>;
 }
 
 /**
@@ -30,8 +38,10 @@ interface ProposalListProps {
  * Diseño responsive con Tailwind CSS
  */
 export default function ProposalList({ proposals, onVote }: ProposalListProps) {
-  const [filter, setFilter] = useState<'all' | 'active' | 'passed' | 'rejected' | 'pending'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'passed' | 'rejected' | 'pending' | 'executed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [votingProposalId, setVotingProposalId] = useState<number | null>(null);
+  const [votingType, setVotingType] = useState<VoteType | null>(null);
 
   // Función para normalizar fechas de forma consistente
   const normalizeDate = (date: string | Date): Date => {
@@ -69,6 +79,28 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
     passed: proposals.filter(p => p.status === 'passed').length,
     rejected: proposals.filter(p => p.status === 'rejected').length,
     pending: proposals.filter(p => p.status === 'pending').length,
+    executed: proposals.filter(p => p.status === 'executed').length,
+  };
+
+  // Manejar votación
+  const handleVote = async (proposalId: number, voteType: VoteType, isGasless: boolean = false) => {
+    if (!onVote) return;
+
+    setVotingProposalId(proposalId);
+    setVotingType(voteType);
+
+    try {
+      const success = await onVote(proposalId, voteType, isGasless);
+      if (success) {
+        // La votación fue exitosa
+        console.log(`Voted ${voteType} on proposal ${proposalId}`);
+      }
+    } catch (error) {
+      console.error('Error voting:', error);
+    } finally {
+      setVotingProposalId(null);
+      setVotingType(null);
+    }
   };
 
   return (
@@ -79,7 +111,7 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
         {/* Filtros y búsqueda */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <div className="flex flex-wrap gap-2">
-            {(['all', 'active', 'pending', 'passed', 'rejected'] as const).map((filterType) => (
+            {(['all', 'active', 'pending', 'passed', 'rejected', 'executed'] as const).map((filterType) => (
               <button
                 key={filterType}
                 onClick={() => setFilter(filterType)}
@@ -124,8 +156,13 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
               voteCount={proposal.voteCount}
               deadline={normalizeDate(proposal.deadline)}
               status={proposal.status}
-              onVote={onVote}
+              onVote={handleVote}
               userVoted={proposal.userVoted}
+              forVotes={proposal.forVotes}
+              againstVotes={proposal.againstVotes}
+              abstainVotes={proposal.abstainVotes}
+              votingInProgress={votingProposalId === proposal.id}
+              currentVoteType={votingProposalId === proposal.id ? votingType : null}
             />
           ))
         ) : (

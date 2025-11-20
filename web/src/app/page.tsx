@@ -3,135 +3,282 @@
 import ConnectWallet from '@/components/ConnectWallet';
 import CreateProposal from '@/components/CreateProposal';
 import ProposalList from '@/components/ProposalList';
-import { Proposal } from '@/components/ProposalList';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import  useWeb3  from '@/hooks/useWeb3';
+import  useMetaTransactions  from '@/hooks/useMetaTransactions';
+import { Env } from '@/utils/config';
+import { ethers } from 'ethers';
+import DAOVoting from '@/contracts/abis/DAOVoting.json';
+import { VoteType } from '@/components/ProposalList';
 
-// Datos de ejemplo para propuestas
-const initialProposals: Proposal[] = [
-  {
-    id: 1,
-    title: "mock  Upgrade Governance Contract",
-    description: "Propose an upgrade to the DAO's governance contract to improve voting efficiency and add new features for proposal management.",
-    creator: "0x1234567890123456789012345678901234567890",
-    voteCount: 42,
-    deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-    status: "active"
-  },
-  {
-    id: 2,
-    title: "mock Allocate Budget for Marketing",
-    description: "Request funding for a new marketing campaign to increase awareness and adoption of our platform.",
-    creator: "0x2345678901234567890123456789012345678901",
-    voteCount: 28,
-    deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    status: "active"
-  },
-  {
-    id: 3,
-    title: "mock Partnership with Web3 Foundation",
-    description: "Formalize a partnership with the Web3 Foundation to collaborate on research and development initiatives.",
-    creator: "0x3456789012345678901234567890123456789012",
-    voteCount: 15,
-    deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    status: "pending"
-  },
-  {
-    id: 4,
-    title: "mock Implement Bug Bounty Program",
-    description: "Establish a bug bounty program to incentivize security researchers to find and report vulnerabilities in our codebase.",
-    creator: "0x4567890123456789012345678901234567890123",
-    voteCount: 67,
-    deadline: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    status: "passed"
-  },
-  {
-    id: 5,
-    title: "mock Change Token Distribution",
-    description: "Modify the token distribution model to better align incentives for long-term stakeholders.",
-    creator: "0x5678901234567890123456789012345678901234",
-    voteCount: 8,
-    deadline: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-    status: "rejected"
-  }
-];
+export interface Proposal {
+  id: number;
+  title: string;
+  description: string;
+  creator: string;
+  voteCount: number;
+  deadline: Date;
+  status: 'active' | 'passed' | 'rejected' | 'pending' | 'executed';
+  userVoted?: boolean;
+  forVotes?: number;
+  againstVotes?: number;
+  abstainVotes?: number;
+}
 
 export default function Home() {
-  const [proposals, setProposals] = useState<Proposal[]>(initialProposals);
-  const [connected, setConnected] = useState(false);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { account, connected, getProvider, getSigner } = useWeb3();
+  const { voteMetaTx } = useMetaTransactions();
 
-  // Función para manejar la creación de nuevas propuestas
-  const handleCreateProposal = (title: string, description: string, deadline: Date) => {
-    const newProposal: Proposal = {
-      id: proposals.length + 1,
-      title,
-      description,
-      creator: "0x1234567890123456789012345678901234567890", // Esto vendría de la cuenta conectada
-      voteCount: 0,
-      deadline,
-      status: "pending" as const
-    };
-    setProposals([newProposal, ...proposals]);
-    alert('Proposal created successfully!');
-  };
-
-  // Función para manejar los votos
-  const handleVote = (id: number) => {
-    if (!connected) {
-      alert('Please connect your wallet to vote');
-      return;
+  // Load proposals from blockchain on component mount and when connected state changes
+  useEffect(() => {
+    if (connected) {
+      loadProposals();
+      console.log('Wallet connected, loading proposals');
+    } else {
+      console.log('Wallet not connected, skipping proposal load');
+      console.log('Account:', account);
+      setError(null);
     }
-    
-    setProposals(proposals.map(proposal => 
-      proposal.id === id 
-        ? { ...proposal, voteCount: proposal.voteCount + 1 } 
-        : proposal
-    ));
-    alert(`Voted on proposal #${id}!`);
+  }, [connected, account?.address]);
+
+  const loadProposals = async () => {
+    console.log(Env.MODE_ENV);
+    setLoading(true);
+    setError(null);
+    try {
+      const provider = await getProvider();
+      if (!provider) throw new Error('No provider available');
+      
+      const signer = await getSigner();
+      const daoContract = new ethers.Contract(
+        Env.DAO_VOTING_ADDRESS,
+        DAOVoting,
+        signer
+      );
+      
+      // Get proposal count
+      const proposalCount = await daoContract.proposalCount();
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      
+      // Load each proposal
+      const proposalsData: Proposal[] = [];
+      for (let i = 1; i <= proposalCount; i++) {
+        try {
+          const proposal = await daoContract.proposals(i);
+          
+          // Get proposal state and details
+          const deadline = Number(proposal.deadline);
+          const executed = proposal.executed;
+          const createdAt = Number(proposal.createdAt);
+          
+          // Convert timestamp to Date
+          const deadlineDate = new Date(deadline * 1000);
+          
+          // Determine status
+          let status: Proposal['status'] = 'pending';
+          if (createdAt <= currentTimestamp) {
+            if (executed) {
+              status = 'executed';
+            } else if (currentTimestamp > deadline) {
+              // Check if proposal passed
+              const stats = await daoContract.getProposalStats(i);
+              status = Number(stats.forVotes) > Number(stats.againstVotes) ? 'passed' : 'rejected';
+            } else {
+              status = 'active';
+            }
+          }
+          
+          // Check if user has voted
+          const hasVoted = account ? await daoContract.hasVoted(i, account.address) : false;
+          
+          // Get vote stats
+          const stats = await daoContract.getProposalStats(i);
+          
+          proposalsData.push({
+            id: i,
+            title: proposal.description.substring(0, 50) + (proposal.description.length > 50 ? '...' : ''),
+            description: proposal.description,
+            creator: proposal.proposer,
+            voteCount: Number(stats.forVotes) + Number(stats.againstVotes) + Number(stats.abstainVotes),
+            deadline: deadlineDate,
+            status,
+            userVoted: hasVoted,
+            forVotes: Number(stats.forVotes),
+            againstVotes: Number(stats.againstVotes),
+            abstainVotes: Number(stats.abstainVotes)
+          });
+        } catch (err) {
+          console.warn(`Error loading proposal ${i}:`, err);
+          continue; // Skip problematic proposals
+        }
+      }
+      
+      setProposals(proposalsData);
+    } catch (error) {
+      console.error('Error loading proposals:', error);
+      setError('Failed to load proposals. Please check your connection and try again.');
+      
+      // Set mock data for development only
+      
+        setProposals([
+          {
+            id: 1,
+            title: 'Sample Proposal for Development',
+            description: 'This is a sample proposal used for development and testing purposes.',
+            creator: '0x1234567890123456789012345678901234567890',
+            voteCount: 150,
+            deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            status: 'active',
+            userVoted: false,
+            forVotes: 100,
+            againstVotes: 30,
+            abstainVotes: 20
+          }
+        ]);
+      
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Función para manejar la conexión
-  const handleConnect = () => {
-    setConnected(true);
+  const refreshProposals = () => {
+    if (connected) {
+      loadProposals();
+    }
   };
 
-  // Función para manejar la desconexión
-  const handleDisconnect = () => {
-    setConnected(false);
+  // Handle voting on proposals
+  const handleVote = async (proposalId: number, voteType: VoteType, isGasless: boolean = false): Promise<boolean> => {
+    if (!connected || !account) {
+      setError('Please connect your wallet to vote');
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      
+      if (isGasless) {
+        // Use meta-transaction for gasless voting
+        const provider = await getProvider();
+        const signer = await getSigner();
+        
+        if (!provider || !signer) {
+          throw new Error('Failed to get provider or signer');
+        }
+
+        // Convert vote type to number (FOR: 0, AGAINST: 1, ABSTAIN: 2)
+        const voteTypeNumber = voteType === 'FOR' ? 0 : voteType === 'AGAINST' ? 1 : 2;
+        
+        const tx = await voteMetaTx(proposalId, voteTypeNumber);
+        if (!tx) {
+          throw new Error('Failed to execute gasless vote');
+        }
+        
+        await tx.wait();
+      } else {
+        // Use normal transaction
+        const provider = await getProvider();
+        const signer = await getSigner();
+        
+        if (!provider || !signer) {
+          throw new Error('Failed to get provider or signer');
+        }
+
+        const daoContract = new ethers.Contract(
+          Env.DAO_VOTING_ADDRESS,
+          DAOVoting,
+          signer
+        );
+
+        // Convert vote type to number
+        const voteTypeNumber = voteType === 'FOR' ? 0 : voteType === 'AGAINST' ? 1 : 2;
+        
+        const tx = await daoContract.castVote(proposalId, voteTypeNumber);
+        await tx.wait();
+      }
+
+      // Refresh proposals to show updated vote status
+      await loadProposals();
+      return true;
+    } catch (error: any) {
+      console.error('Error voting:', error);
+      setError(error.message || 'Failed to vote. Please try again.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
-        <header className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-            DAO Governance Platform
-          </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Decentralized governance for the future. Create, vote on, and manage proposals in a transparent and secure manner.
-          </p>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 space-y-6">
-            <ConnectWallet 
-              connected={connected} 
-              onConnect={handleConnect} 
-              onDisconnect={handleDisconnect} 
-            />
-            <CreateProposal 
-              onCreateProposal={handleCreateProposal} 
-              disabled={!connected} 
-            />
-          </div>
-          
-          <div className="lg:col-span-2">
-            <ProposalList 
-              proposals={proposals} 
-              onVote={connected ? handleVote : undefined} 
-            />
-          </div>
+    <main className="min-h-screen bg-gray-50 py-8">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">DAO Voting Platform</h1>
+          <ConnectWallet />
         </div>
-      </main>
-    </div>
+        
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="ml-4 text-red-800 hover:text-red-900 font-bold"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        
+        {connected ? (
+          <>
+            <CreateProposal onCreateProposal={refreshProposals} />
+            
+            <div className="mt-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-semibold text-gray-800">Proposals</h2>
+                <button
+                  onClick={refreshProposals}
+                  disabled={loading}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  {loading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+              
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                  <p className="mt-2 text-gray-600">Loading proposals...</p>
+                </div>
+              ) : proposals.length === 0 ? (
+                <div className="text-center py-8 bg-white rounded-lg shadow">
+                  <p className="text-gray-500">No proposals found.</p>
+                </div>
+              ) : (
+                <ProposalList 
+                  proposals={proposals} 
+                  onVote={handleVote}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-16">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-auto">
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+                Welcome to DAO Voting
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Connect your wallet to view proposals, vote, and create new proposals.
+              </p>
+              <ConnectWallet />
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

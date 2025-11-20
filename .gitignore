@@ -1,0 +1,14 @@
+# Compiler files
+cache/
+out/
+
+# Ignores development broadcast logs
+!/broadcast
+sc//broadcast/*/31337/
+sc/broadcast/**/dry-run/
+
+# Docs
+
+
+# Dotenv file
+.env

@@ -3,6 +3,10 @@ pragma solidity ^0.8.20;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+/**
+ * @title MinimalForwarder
+ * @dev EIP-2771 compliant minimal forwarder for meta-transactions
+ */
 contract MinimalForwarder {
     using ECDSA for bytes32;
 
@@ -16,8 +20,9 @@ contract MinimalForwarder {
         bytes data;
     }
 
-    // Typehash pre-calculado para "ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,uint256 deadline,bytes data)"
-    bytes32 private constant _TYPEHASH = 0x8560d11400000000000000000000000000000000000000000000000000000000;
+    // Typehash pre-calculado para la estructura ForwardRequest
+    bytes32 private constant _TYPEHASH = 
+        keccak256("ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,uint256 deadline,bytes data)");
 
     bytes32 private immutable _DOMAIN_SEPARATOR;
     mapping(address => uint256) private _nonces;
@@ -61,49 +66,36 @@ contract MinimalForwarder {
         if (_nonces[req.from] != req.nonce) return false;
         if (block.timestamp > req.deadline) return false;
         
-        bytes32 digest = _getDigest(req);
+        bytes32 digest = _hashTypedDataV4(req);
         address signer = digest.recover(signature);
         return signer == req.from;
     }
 
-    function _getDigest(ForwardRequest calldata req) private view returns (bytes32 digest) {
-        assembly {
-            let ptr := mload(0x40)
-            
-            // Calcular hash de req.data
-            let dataHash
-            let dataPtr := add(req, 0xc0) // offset para req.data en calldata
-            let dataLength := calldataload(dataPtr)
-            dataPtr := add(dataPtr, 0x20)
-            
-            if gt(dataLength, 0) {
-                dataHash := keccak256(dataPtr, dataLength)
-            } {
-                // Hash de bytes vacíos
-                dataHash := 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
-            }
-            
-            // Calcular structHash
-            mstore(ptr, _TYPEHASH)
-            mstore(add(ptr, 32), calldataload(add(req, 0x20)))  // from
-            mstore(add(ptr, 64), calldataload(add(req, 0x40)))  // to
-            mstore(add(ptr, 96), calldataload(add(req, 0x60)))  // value
-            mstore(add(ptr, 128), calldataload(add(req, 0x80))) // gas
-            mstore(add(ptr, 160), calldataload(add(req, 0xa0))) // nonce
-            mstore(add(ptr, 192), calldataload(add(req, 0xc0))) // deadline (antes de data)
-            mstore(add(ptr, 224), dataHash)                     // data hash
-            
-            let structHash := keccak256(ptr, 256)
-            
-            // Calcular digest EIP-712
-            mstore(ptr, 0x1901000000000000000000000000000000000000000000000000000000000000)
-            
-            // Cargar _DOMAIN_SEPARATOR desde storage (slot 0)
-            mstore(add(ptr, 2), sload(0))
-            mstore(add(ptr, 34), structHash)
-            
-            digest := keccak256(ptr, 66)
-            mstore(0x40, add(ptr, 322))
-        }
+    function _hashTypedDataV4(ForwardRequest calldata req) internal view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                _DOMAIN_SEPARATOR,
+                keccak256(
+                    abi.encode(
+                        _TYPEHASH,
+                        req.from,
+                        req.to,
+                        req.value,
+                        req.gas,
+                        req.nonce,
+                        req.deadline,
+                        keccak256(req.data)
+                    )
+                )
+            )
+        );
+    }
+    
+    /**
+     * @dev Returns the domain separator for EIP-712
+     */
+    function domainSeparator() external view returns (bytes32) {
+        return _DOMAIN_SEPARATOR;
     }
 }
