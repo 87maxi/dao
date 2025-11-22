@@ -1,4 +1,5 @@
 "use client"
+
 import { Hex } from 'viem';
 import { useEffect, useState } from 'react';
 import { apiService, ApiProposal } from '@/lib/apiService';
@@ -53,14 +54,14 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 p-4">
-      <div className="container mx-auto">
+      <div className="web3-container container mx-auto">
         <h1 className="text-4xl font-bold text-center my-8 gradient-text">DAO Dashboard</h1>
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="card-grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {proposals.map((proposal) => (
               <div key={proposal.id} className="card">
                 <h2 className="text-xl font-semibold mb-2">Proposal {proposal.id}</h2>
