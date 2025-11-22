@@ -14,13 +14,13 @@ invokable: true
    - Voting system (FOR, AGAINST, ABSTAIN)
    - Vote tracking and statistics
    - Automatic execution after approval + delay
-   - ERC2771Context integration for gasless transactions
+   - **ERC2771** integration for gasless transactions
 
 
 
 ## EIP-2771 compliant forwarder:
    **MinimalForwarder.sol**
-   - Use the EIP-2771 standard; be rigorous in adhering to the standard.
+   - Usa  **EIP-2771** standard; be rigorous in adhering to the standard.
    - Validates meta-transaction signatures
    - Forwards calls to target contracts
    - Nonce tracking for replay protection
@@ -31,4 +31,4 @@ invokable: true
    - User signs vote off-chain (no gas needed)
    - Web app (relayer) submits to MinimalForwarder
    - MinimalForwarder validates and forwards to DAO contract
-   - DAO contract extracts original sender via ERC2771Context
+   - DAO contract extracts original sender via **ERC2771**

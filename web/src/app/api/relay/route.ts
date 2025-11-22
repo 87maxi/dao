@@ -1,8 +1,10 @@
-import { ethers } from 'ethers';
+import { type Hex, encodeFunctionData, parseEther, toHex } from 'viem';
 import { NextRequest, NextResponse } from 'next/server';
 import MinimalForwarder from '@/contracts/abis/MinimalForwarder.json';
 import DAOVoting from '@/contracts/abis/DAOVoting.json';
 import { Env } from '@/utils/config';
+import { createPublicClient, http, createWalletClient, Hex, concatHex } from 'viem';
+import { sepolia } from 'viem/chains';
 
 export interface ForwardRequest {
   from: string;
@@ -24,6 +26,19 @@ export interface RelayResponse {
   message?: string;
 }
 
+// Create a public client for reading data
+const publicClient = createPublicClient({
+  chain: sepolia,
+  transport: http(Env.RPC_URL)
+});
+
+// Create a wallet client for signing and sending transactions
+const walletClient = createWalletClient({
+  chain: sepolia,
+  transport: http(Env.RPC_URL),
+  account: Env.RELAYER_PRIVATE_KEY as Hex
+});
+
 /**
  * POST handler for relaying transactions to Anvil
  */
@@ -42,34 +57,23 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Create provider connected to Anvil
-    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-    
-    // Create contract instances
-    const forwarder = new ethers.Contract(
-      Env.FORWARDER_CONTRACT_ADDRESS,
-      MinimalForwarder,
-      provider
-    );
-    
-    // Get signer with relayer private key
-    const relayerWallet = new ethers.Wallet(Env.RELAYER_PRIVATE_KEY, provider);
-    
     // Execute the transaction through the forwarder
-    const tx = await forwarder.connect(relayerWallet).execute(
-      forwardRequest,
-      signature
-    );
+    const hash = await walletClient.writeContract({
+      address: Env.FORWARDER_CONTRACT_ADDRESS as Hex,
+      abi: MinimalForwarder.abi,
+      functionName: 'execute',
+      args: [forwardRequest, signature]
+    });
     
     // Wait for transaction to be mined
-    const receipt = await tx.wait();
+    const receipt = await publicClient.getTransactionReceipt({ hash });
     
     return NextResponse.json({
       success: true,
-      txHash: tx.hash,
-      blockNumber: receipt?.blockNumber,
+      txHash: hash,
+      blockNumber: Number(receipt?.blockNumber),
       gasUsed: receipt?.gasUsed.toString(),
-      status: receipt?.status === 1 ? 'success' : 'failed'
+      status: receipt?.status === 'success' ? 'success' : 'failed'
     });
     
   } catch (error: any) {
@@ -90,14 +94,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-    const network = await provider.getNetwork();
+    const network = await publicClient.getChainId();
     
     return NextResponse.json({
       success: true,
       status: 'active',
-      network: network.name,
-      chainId: network.chainId,
+      network: 'sepolia',
+      chainId: network,
       forwarderAddress: Env.FORWARDER_CONTRACT_ADDRESS,
       daoVotingAddress: Env.DAO_VOTING_ADDRESS,
       timestamp: new Date().toISOString()
@@ -124,29 +127,27 @@ export async function createVoteForwardRequest(
   voteType: number,
   deadline: number
 ): Promise<{ request: ForwardRequest; message: string }> {
-  const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-  const forwarder = new ethers.Contract(
-    Env.FORWARDER_CONTRACT_ADDRESS,
-    MinimalForwarder,
-    provider
-  );
   
   // Get nonce
-  const nonce = await forwarder.getNonce(userAddress);
+  const nonce = await publicClient.readContract({
+    address: Env.FORWARDER_CONTRACT_ADDRESS as Hex,
+    abi: MinimalForwarder.abi,
+    functionName: 'getNonce',
+    args: [userAddress]
+  });
   
   // Encode data for castVoteByMetaTx
-  const daoVoting = new ethers.Contract(
-    Env.DAO_VOTING_ADDRESS,
-    DAOVoting,
-    provider
-  );
-  const data = daoVoting.interface.encodeFunctionData('castVoteByMetaTx', [
-    userAddress,
-    proposalId,
-    voteType,
-    deadline,
-    '0x' // signature placeholder
-  ]);
+  const data = encodeFunctionData({
+    abi: DAOVoting.abi,
+    functionName: 'castVoteByMetaTx',
+    args: [
+      userAddress,
+      proposalId,
+      voteType,
+      deadline,
+      '0x' // signature placeholder
+    ]
+  });
 
   const request: ForwardRequest = {
     from: userAddress,
@@ -162,8 +163,8 @@ export async function createVoteForwardRequest(
   const domain = {
     name: 'MinimalForwarder',
     version: '1',
-    chainId: await provider.getNetwork().then(net => net.chainId),
-    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS,
+    chainId: sepolia.id,
+    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS as Hex,
   };
 
   const types = {
@@ -196,28 +197,26 @@ export async function createProposalForwardRequest(
   description: string,
   deadline: number
 ): Promise<{ request: ForwardRequest; message: string }> {
-  const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-  const forwarder = new ethers.Contract(
-    Env.FORWARDER_CONTRACT_ADDRESS,
-    MinimalForwarder,
-    provider
-  );
   
   // Get nonce
-  const nonce = await forwarder.getNonce(userAddress);
+  const nonce = await publicClient.readContract({
+    address: Env.FORWARDER_CONTRACT_ADDRESS as Hex,
+    abi: MinimalForwarder.abi,
+    functionName: 'getNonce',
+    args: [userAddress]
+  });
   
   // Encode data for createProposalByMetaTx
-  const daoVoting = new ethers.Contract(
-    Env.DAO_VOTING_ADDRESS,
-    DAOVoting,
-    provider
-  );
-  const data = daoVoting.interface.encodeFunctionData('createProposalByMetaTx', [
-    userAddress,
-    description,
-    deadline,
-    '0x' // signature placeholder
-  ]);
+  const data = encodeFunctionData({
+    abi: DAOVoting.abi,
+    functionName: 'createProposalByMetaTx',
+    args: [
+      userAddress,
+      description,
+      deadline,
+      '0x' // signature placeholder
+    ]
+  });
 
   const request: ForwardRequest = {
     from: userAddress,
@@ -233,8 +232,8 @@ export async function createProposalForwardRequest(
   const domain = {
     name: 'MinimalForwarder',
     version: '1',
-    chainId: await provider.getNetwork().then(net => net.chainId),
-    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS,
+    chainId: sepolia.id,
+    verifyingContract: Env.FORWARDER_CONTRACT_ADDRESS as Hex,
   };
 
   const types = {

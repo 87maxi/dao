@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ethers } from 'ethers';
-import  useWeb3  from '@/hooks/useWeb3';
+import useWeb3 from '@/hooks/useWeb3';
 import { metaTransactionService, ForwardRequest } from '@/utils/metaTransactions';
 import { Env } from '@/utils/config';
 
@@ -12,14 +11,14 @@ interface UseMetaTransactionsReturns {
     to: string,
     data: string,
     gasLimit?: number
-  ) => Promise<ethers.TransactionResponse | null>;
+  ) => Promise<unknown | null>;
   createProposalMetaTx: (
     description: string
-  ) => Promise<ethers.TransactionResponse | null>;
+  ) => Promise<unknown | null>;
   voteMetaTx: (
     proposalId: number,
     voteType: number
-  ) => Promise<ethers.TransactionResponse | null>;
+  ) => Promise<unknown | null>;
 }
 
 /**
@@ -28,7 +27,7 @@ interface UseMetaTransactionsReturns {
 export default function useMetaTransactions(): UseMetaTransactionsReturns {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { account, connected, getProvider, getSigner } = useWeb3();
+  const { account, connected, getSigner } = useWeb3();
 
   const isMetaTxSupported = connected && account !== null;
 
@@ -40,7 +39,7 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
     to: string,
     data: string,
     gasLimit: number = 500000
-  ): Promise<ethers.TransactionResponse | null> => {
+  ): Promise<unknown | null> => {
     if (!isMetaTxSupported || !account) {
       setError('Wallet no conectado o no soporta meta-transacciones');
       return null;
@@ -50,13 +49,9 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
     clearError();
 
     try {
+      // Get signer (compatible con wagmi)
       const signer = await getSigner();
-      const provider = await getProvider();
       
-      if (!signer || !provider) {
-        throw new Error('No se pudo obtener el signer o provider');
-      }
-
       // Crear forward request
       const request = metaTransactionService.createForwardRequest(
         account.address,
@@ -65,15 +60,8 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
         gasLimit
       );
 
-      // Firmar la solicitud
-      const signature = await metaTransactionService.signForwardRequest(request, signer);
-
-      // Ejecutar la meta-transacción
-      const tx = await metaTransactionService.executeMetaTransaction(
-        request,
-        signature,
-        provider
-      );
+      // Execute the meta-transaction - the metaTransactionService now handles the logic
+      const tx = await metaTransactionService.executeMetaTransaction(request, await signer);
 
       setLoading(false);
       return tx;
@@ -83,11 +71,11 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
       setLoading(false);
       return null;
     }
-  }, [isMetaTxSupported, account, getSigner, getProvider, clearError]);
+  }, [isMetaTxSupported, account, getSigner, clearError]);
 
   const createProposalMetaTx = useCallback(async (
     description: string
-  ): Promise<ethers.TransactionResponse | null> => {
+  ): Promise<unknown | null> => {
     if (!isMetaTxSupported || !account) {
       setError('Wallet no conectado');
       return null;
@@ -97,18 +85,10 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
     clearError();
 
     try {
-      const signer = await getSigner();
-      const provider = await getProvider();
-      
-      if (!signer || !provider) {
-        throw new Error('No se pudo obtener el signer o provider');
-      }
-
+      // Create proposal meta-transaction - the logic is now in metaTransactionService
       const tx = await metaTransactionService.createProposalMetaTransaction(
         account.address,
-        description,
-        signer,
-        provider
+        description
       );
 
       setLoading(false);
@@ -119,12 +99,12 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
       setLoading(false);
       return null;
     }
-  }, [isMetaTxSupported, account, getSigner, getProvider, clearError]);
+  }, [isMetaTxSupported, account]);
 
   const voteMetaTx = useCallback(async (
     proposalId: number,
     voteType: number
-  ): Promise<ethers.TransactionResponse | null> => {
+  ): Promise<unknown | null> => {
     if (!isMetaTxSupported || !account) {
       setError('Wallet no conectado');
       return null;
@@ -134,19 +114,11 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
     clearError();
 
     try {
-      const signer = await getSigner();
-      const provider = await getProvider();
-      
-      if (!signer || !provider) {
-        throw new Error('No se pudo obtener el signer o provider');
-      }
-
+      // Create DAO vote meta-transaction - logic now in metaTransactionService
       const tx = await metaTransactionService.createDAOVoteMetaTransaction(
         account.address,
         proposalId,
-        voteType,
-        signer,
-        provider
+        voteType
       );
 
       setLoading(false);
@@ -157,7 +129,7 @@ export default function useMetaTransactions(): UseMetaTransactionsReturns {
       setLoading(false);
       return null;
     }
-  }, [isMetaTxSupported, account, getSigner, getProvider, clearError]);
+  }, [isMetaTxSupported, account]);
 
   return {
     isMetaTxSupported,

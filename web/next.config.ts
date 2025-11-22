@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  reactCompiler: true,
+  // reactCompiler: true, // Deshabilitar temporalmente el compilador experimental
   
   // Configuración mínima de Turbopack
   turbopack: {},

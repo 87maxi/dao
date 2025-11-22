@@ -3,13 +3,4 @@ src = "src"
 out = "out"
 libs = ["lib"]
 
-remappings = [
-    '@openzeppelin/=lib/openzeppelin-contracts/',
-    '@forge-std/=lib/forge-std/src/'
-]
-
-
-[etherscan]
-default = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
-
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

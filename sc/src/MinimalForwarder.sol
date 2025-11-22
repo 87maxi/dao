@@ -1,13 +1,21 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from  "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /**
- * @title MinimalForwarder
- * @dev EIP-2771 compliant minimal forwarder for meta-transactions
+ * @dev Interface that must be implemented by contracts receiving meta-transactions.
+ * See https://eips.ethereum.org/EIPS/eip-2771
  */
-contract MinimalForwarder {
+interface IMetaTransactionReceiver {
+    function onERC2771MetaTransaction(address userAddress) external;
+}
+
+/**
+ * @dev Minimal forwarder for meta-transactions
+ * Compliant with EIP-2771: https://eips.ethereum.org/EIPS/eip-2771
+ */
+contract MinimalForwarder is EIP712 {
     using ECDSA for bytes32;
 
     struct ForwardRequest {
@@ -16,86 +24,95 @@ contract MinimalForwarder {
         uint256 value;
         uint256 gas;
         uint256 nonce;
-        uint256 deadline;
         bytes data;
     }
 
-    // Typehash pre-calculado para la estructura ForwardRequest
-    bytes32 private constant _TYPEHASH = 
-        keccak256("ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,uint256 deadline,bytes data)");
+    bytes32 private constant _TYPEHASH = keccak256(
+        "ForwardRequest(address from,address to,uint256 value,uint256 gas,uint256 nonce,bytes data)"
+    );
 
-    bytes32 private immutable _DOMAIN_SEPARATOR;
     mapping(address => uint256) private _nonces;
-    
-    constructor() {
-        _DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes("MinimalForwarder")),
-                keccak256(bytes("1")),
-                block.chainid,
-                address(this)
-            )
-        );
-    }
 
+    event MetaTransactionExecuted(
+        address indexed userAddress,
+        address indexed relayerAddress,
+        address indexed target,
+        uint256 value,
+        bytes functionSignature
+    );
+
+    constructor() EIP712("MinimalForwarder", "0.0.1") {}
+
+    /**
+     * @dev Returns the nonce of a given address.
+     */
     function getNonce(address from) public view returns (uint256) {
         return _nonces[from];
     }
 
-    function execute(ForwardRequest calldata req, bytes calldata signature)
-        external
-        payable
-        returns (bool, bytes memory)
-    {
-        require(verify(req, signature), "MinimalForwarder: invalid signature");
-        require(_nonces[req.from] == req.nonce, "MinimalForwarder: invalid nonce");
-        require(block.timestamp <= req.deadline, "MinimalForwarder: request expired");
+    /**
+     * @dev Verifies the signature for a forward request.
+     * Uses the EIP-712 signing scheme.
+     */
+    function verify(
+        ForwardRequest calldata req,
+        bytes calldata signature
+    ) public view returns (bool) {
+        address signer = _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    _TYPEHASH,
+                    req.from,
+                    req.to,
+                    req.value,
+                    req.gas,
+                    req.nonce,
+                    keccak256(req.data)
+                )
+            )
+        ).recover(signature);
 
-        _nonces[req.from]++;
-
-        (bool success, bytes memory returndata) = req.to.call{value: req.value, gas: req.gas}(
-            abi.encodePacked(req.data, req.from)
-        );
-
-        require(success, "MinimalForwarder: call failed");
-        return (success, returndata);
-    }
-
-    function verify(ForwardRequest calldata req, bytes calldata signature) public view returns (bool) {
-        if (_nonces[req.from] != req.nonce) return false;
-        if (block.timestamp > req.deadline) return false;
-        
-        bytes32 digest = _hashTypedDataV4(req);
-        address signer = digest.recover(signature);
         return signer == req.from;
     }
 
-    function _hashTypedDataV4(ForwardRequest calldata req) internal view returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                _DOMAIN_SEPARATOR,
-                keccak256(
-                    abi.encode(
-                        _TYPEHASH,
-                        req.from,
-                        req.to,
-                        req.value,
-                        req.gas,
-                        req.nonce,
-                        req.deadline,
-                        keccak256(req.data)
-                    )
-                )
-            )
-        );
-    }
-    
     /**
-     * @dev Returns the domain separator for EIP-712
+     * @dev Executes a meta-transaction.
+     * This function is called by a relayer on behalf of a user.
      */
-    function domainSeparator() external view returns (bytes32) {
-        return _DOMAIN_SEPARATOR;
+    function execute(
+        ForwardRequest calldata req,
+        bytes calldata signature
+    ) external payable returns (bool, bytes memory) {
+        require(verify(req, signature), "MinimalForwarder: signature does not match request");
+        require(_nonces[req.from] == req.nonce, "MinimalForwarder: invalid nonce");
+
+        _nonces[req.from] = req.nonce + 1;
+
+        (bool success, bytes memory returndata) = req.to.call{
+            value: req.value,
+            gas: req.gas
+        }(req.data);
+
+        // Validate that the relayer has sent enough gas for the call.
+        // See https://eips.ethereum.org/EIPS/eip-2771#requirements-for-callers
+        if (!success) {
+            // If the target contract is a MetaTransactionReceiver, it should return the correct magic value
+            if (returndata.length >= 32 &&
+                keccak256(returndata) == 
+                keccak256(abi.encodeWithSelector(IMetaTransactionReceiver.onERC2771MetaTransaction.selector, req.from))) {
+                // Valid meta-transaction callback response
+                return (success, returndata);
+            }
+
+            // Re-throw the original error
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
+        }
+
+        emit MetaTransactionExecuted(req.from, msg.sender, req.to, req.value, req.data);
+
+        return (success, returndata);
     }
 }

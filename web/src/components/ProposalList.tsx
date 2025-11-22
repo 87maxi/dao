@@ -58,7 +58,6 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
     if (filter !== 'all' && proposal.status !== filter) {
       return false;
     }
-
     // Aplicar filtro por búsqueda
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
@@ -147,7 +146,7 @@ export default function ProposalList({ proposals, onVote }: ProposalListProps) {
       <div className="space-y-6">
         {filteredProposals.length > 0 ? (
           filteredProposals.map((proposal) => (
-            <ProposalCard
+             <ProposalCard
               key={proposal.id}
               id={proposal.id}
               title={proposal.title}

@@ -1,7 +1,10 @@
 "use client";
 
-import { Result } from 'ethers';
 import { useState } from 'react';
+import { useWalletClient, usePublicClient } from 'wagmi';
+import { encodeFunctionData } from 'viem';
+import { Env } from '@/utils/config';
+import DAOVotingABI from '@/contracts/abis/DAOVoting.json';
 
 /**
  * Props para el componente CreateProposal
@@ -31,6 +34,11 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [transactionHash, setTransactionHash] = useState<string>('');
+
+  // Hooks de wagmi para interactuar con la blockchain
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
 
   /**
    * Valida los campos del formulario
@@ -72,6 +80,47 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
   };
 
   /**
+   * Crea la propuesta en la blockchain
+   */
+  const createProposalOnChain = async (): Promise<string> => {
+    if (!walletClient) {
+      throw new Error('Wallet client not available');
+    }
+
+    try {
+      // Encode the function call
+      const data = encodeFunctionData({
+        abi: DAOVotingABI,
+        functionName: 'createProposal',
+        args: [description]
+      });
+
+      // Send the transaction
+      const hash = await walletClient.writeContract({
+        address: Env.DAO_VOTING_ADDRESS as `0x${string}`,
+        abi: DAOVotingABI,
+        functionName: 'createProposal',
+        args: [description],
+      });
+
+      setTransactionHash(hash);
+      
+      // Wait for transaction confirmation
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== 'success') {
+          throw new Error('Transaction failed');
+        }
+      }
+
+      return hash;
+    } catch (error) {
+      console.error('Error creating proposal on chain:', error);
+      throw error;
+    }
+  };
+
+  /**
    * Maneja el envío del formulario
    */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,17 +131,18 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
     setSubmitting(true);
     
     try {
-    await onCreateProposal(
+      // Primero crear la propuesta en la blockchain
+      await createProposalOnChain();
+      
+      // Si llegamos aquí, la transacción fue enviada exitosamente
+      // Ahora llamamos al callback del padre con los datos
+      await onCreateProposal(
         title, 
         description, 
         new Date(deadline),
         recipientAddress,
         isGasless
       );
-       
-
-
-
 
       // Reiniciar el formulario
       setTitle('');
@@ -100,6 +150,7 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
       setRecipientAddress('');
       setIsGasless(false);
       setErrors({});
+      setTransactionHash('');
     } catch (error) {
       console.error('Error creating proposal:', error);
       setErrors({ form: 'Failed to create proposal. Please try again.' });
@@ -209,10 +260,16 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
         </div>
 
         {errors.form && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{errors.form}</div>}
+        
+        {transactionHash && (
+          <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+            Transaction sent! Hash: {transactionHash}
+          </div>
+        )}
 
         <button
           type="submit"
-          disabled={disabled || submitting}
+          disabled={disabled || submitting || !walletClient}
           className="w-full bg-gradient-to-r from-green-500 to-emerald-600 
                    hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-6 
                    rounded-lg shadow-lg transform transition-all duration-200 
@@ -231,6 +288,12 @@ export default function CreateProposal({ onCreateProposal, disabled = false }: C
             <>Create Proposal</>
           )}
         </button>
+
+        {!walletClient && (
+          <div className="p-3 bg-yellow-50 text-yellow-700 rounded-lg text-sm">
+            Please connect your wallet to create a proposal
+          </div>
+        )}
       </form>
     </div>
   );

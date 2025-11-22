@@ -8,7 +8,7 @@ import  useWeb3  from '@/hooks/useWeb3';
 import  useMetaTransactions  from '@/hooks/useMetaTransactions';
 import { Env } from '@/utils/config';
 import { ethers } from 'ethers';
-import DAOVoting from '@/contracts/abis/DAOVoting.json';
+import DAOVotingABI from '@/contracts/abis/DAOVoting.json';
 import { VoteType } from '@/components/ProposalList';
 
 export interface Proposal {
@@ -29,45 +29,76 @@ export default function Home() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { account, connected, getProvider, getSigner } = useWeb3();
+  const { account, connected, getProvider, getSigner, loading: web3Loading } = useWeb3();
   const { voteMetaTx } = useMetaTransactions();
 
   // Load proposals from blockchain on component mount and when connected state changes
   useEffect(() => {
-    if (connected) {
-      loadProposals();
+
+    
+
+    if (connected && !web3Loading) {
       console.log('Wallet connected, loading proposals');
+      console.log('Account balance:', account?.balance);
+      loadProposals();
     } else {
-      console.log('Wallet not connected, skipping proposal load');
+      console.log('Wallet not connected or provider not ready, skipping proposal load');
       console.log('Account:', account);
+      console.log('Connected:', connected);
+      console.log('Web3 Loading:', web3Loading);
       setError(null);
     }
-  }, [connected, account?.address]);
+  }, [connected, account?.address, web3Loading]);
 
   const loadProposals = async () => {
-    console.log(Env.MODE_ENV);
     setLoading(true);
     setError(null);
     try {
+      console.log('Getting provider...');
       const provider = await getProvider();
-      if (!provider) throw new Error('No provider available');
+      console.log('Provider:', provider);
       
+      if (!provider) {
+        throw new Error('No provider available. Please check your wallet connection.');
+      }
+      
+      console.log('Getting signer...');
       const signer = await getSigner();
+      console.log('Signer:', signer);
+      
+      if (!signer) {
+        throw new Error('No signer available. Please make sure your wallet is connected and unlocked.');
+      }
+
+      // Crear el contrato con el signer para transacciones
       const daoContract = new ethers.Contract(
         Env.DAO_VOTING_ADDRESS,
-        DAOVoting,
+        DAOVotingABI,
         signer
       );
+
+      // También crear una instancia de solo lectura con el provider para llamadas
+      const daoContractReadOnly = new ethers.Contract(
+        Env.DAO_VOTING_ADDRESS,
+        DAOVotingABI,
+        provider
+      );
       
-      // Get proposal count
-      const proposalCount = await daoContract.proposalCount();
+
+      console.log(daoContractReadOnly)
+      console.log('Getting proposal count...');
+      // Get proposal count usando la instancia de solo lectura
+      const proposalCount = await daoContractReadOnly.proposalCount() || 0;
+      console.log('Proposal count:', proposalCount.toString());
+      console.log(">>>>>>>>>>>",proposalCount)
       const currentTimestamp = Math.floor(Date.now() / 1000);
       
       // Load each proposal
       const proposalsData: Proposal[] = [];
       for (let i = 1; i <= proposalCount; i++) {
         try {
-          const proposal = await daoContract.proposals(i);
+          console.log('Loading proposal', i);
+          const proposal = await daoContractReadOnly.proposals(i);
           
           // Get proposal state and details
           const deadline = Number(proposal.deadline);
@@ -84,7 +115,7 @@ export default function Home() {
               status = 'executed';
             } else if (currentTimestamp > deadline) {
               // Check if proposal passed
-              const stats = await daoContract.getProposalStats(i);
+              const stats = await daoContractReadOnly.getProposalStats(i);
               status = Number(stats.forVotes) > Number(stats.againstVotes) ? 'passed' : 'rejected';
             } else {
               status = 'active';
@@ -92,10 +123,10 @@ export default function Home() {
           }
           
           // Check if user has voted
-          const hasVoted = account ? await daoContract.hasVoted(i, account.address) : false;
+          const hasVoted = account ? await daoContractReadOnly.hasVoted(i, account.address) : false;
           
           // Get vote stats
-          const stats = await daoContract.getProposalStats(i);
+          const stats = await daoContractReadOnly.getProposalStats(i);
           
           proposalsData.push({
             id: i,
@@ -115,6 +146,32 @@ export default function Home() {
           continue; // Skip problematic proposals
         }
       }
+
+
+        // debug 
+        console.log('Contract address:', Env.DAO_VOTING_ADDRESS);
+        console.log('Provider network:', await provider.getNetwork());
+        console.log('Signer address:', await signer.getAddress());
+
+        // Prueba con una función simple primero
+        try {
+          const owner = await daoContractReadOnly.owner();
+          console.log('Contract owner:', owner);
+        } catch (error) {
+          console.error('Error calling owner():', error);
+        }
+        // debug 
+
+
+        // Luego prueba proposalCount
+        try {
+          const count = await daoContractReadOnly.proposalCount();
+          console.log('Proposal count:', count.toString());
+        } catch (error) {
+          console.error('Error calling proposalCount():', error);
+        }
+
+        console.log(proposalsData)
       
       setProposals(proposalsData);
     } catch (error) {
@@ -122,7 +179,8 @@ export default function Home() {
       setError('Failed to load proposals. Please check your connection and try again.');
       
       // Set mock data for development only
-      
+      if (Env.NODE_ENV === 'development') {
+        console.log('Setting mock data for development');
         setProposals([
           {
             id: 1,
@@ -138,14 +196,14 @@ export default function Home() {
             abstainVotes: 20
           }
         ]);
-      
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const refreshProposals = () => {
-    if (connected) {
+    if (connected && !web3Loading) {
       loadProposals();
     }
   };
@@ -189,7 +247,7 @@ export default function Home() {
 
         const daoContract = new ethers.Contract(
           Env.DAO_VOTING_ADDRESS,
-          DAOVoting,
+          DAOVotingABI,
           signer
         );
 
@@ -232,7 +290,12 @@ export default function Home() {
           </div>
         )}
         
-        {connected ? (
+        {web3Loading ? (
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Initializing Web3...</p>
+          </div>
+        ) : connected ? (
           <>
             <CreateProposal onCreateProposal={refreshProposals} />
             

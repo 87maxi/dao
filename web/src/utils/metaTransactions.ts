@@ -1,12 +1,13 @@
-import { ethers } from 'ethers';
+import { type PublicClient, type WalletClient, parseEther, encodeFunctionData } from 'viem';
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { Env } from '@/utils/config';
 import MinimalForwarder from '@/contracts/abis/MinimalForwarder.json';
 
 export interface ForwardRequest {
   from: string;
   to: string;
-  value: number;
-  gas: number;
+  value: string;
+  gas: string;
   nonce: number;
   deadline: number;
   data: string;
@@ -20,15 +21,9 @@ export interface EIP712Domain {
 }
 
 class MetaTransactionService {
-  private forwarderContract: ethers.Contract;
   private domain: EIP712Domain;
 
   constructor() {
-    this.forwarderContract = new ethers.Contract(
-      Env.FORWARDER_CONTRACT_ADDRESS,
-      MinimalForwarder
-    );
-    
     this.domain = {
       name: 'MinimalForwarder',
       version: '1',
@@ -42,9 +37,19 @@ class MetaTransactionService {
    */
   async getNonce(address: string): Promise<number> {
     try {
-      const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-      const nonce = await this.forwarderContract.connect(provider).getNonce(address);
-      return Number(nonce);
+      const publicClient = usePublicClient();
+      if (!publicClient) {
+        throw new Error('No public client available');
+      }
+
+      const result = await publicClient.readContract({
+        address: Env.FORWARDER_CONTRACT_ADDRESS,
+        abi: MinimalForwarder,
+        functionName: 'getNonce',
+        args: [address]
+      });
+      
+      return Number(result);
     } catch (error) {
       console.error('Error getting nonce:', error);
       throw new Error('Failed to get nonce from forwarder contract');
@@ -66,8 +71,8 @@ class MetaTransactionService {
     return {
       from,
       to,
-      value: 0,
-      gas: gasLimit,
+      value: '0',
+      gas: gasLimit.toString(),
       nonce: 0, // This will be populated with the actual nonce
       deadline,
       data
@@ -79,7 +84,7 @@ class MetaTransactionService {
    */
   async signForwardRequest(
     request: ForwardRequest,
-    signer: ethers.Signer
+    walletClient: WalletClient
   ): Promise<string> {
     try {
       // Get the actual nonce
@@ -87,9 +92,9 @@ class MetaTransactionService {
       const requestWithNonce = { ...request, nonce };
 
       // Sign the typed data
-      const signature = await signer.signTypedData(
-        this.domain,
-        {
+      const signature = await walletClient.signTypedData({
+        domain: this.domain,
+        types: {
           ForwardRequest: [
             { name: 'from', type: 'address' },
             { name: 'to', type: 'address' },
@@ -100,8 +105,9 @@ class MetaTransactionService {
             { name: 'data', type: 'bytes' }
           ]
         },
-        requestWithNonce
-      );
+        primaryType: 'ForwardRequest',
+        message: requestWithNonce
+      });
 
       return signature;
     } catch (error) {
@@ -116,16 +122,21 @@ class MetaTransactionService {
   async executeMetaTransaction(
     request: ForwardRequest,
     signature: string,
-    provider: ethers.Provider
-  ): Promise<ethers.TransactionResponse> {
+    walletClient: WalletClient
+  ): Promise<unknown> {
     try {
-      const forwarderWithSigner = this.forwarderContract.connect(provider.getSigner());
-      
-      const tx = await forwarderWithSigner.execute(request, signature, {
-        gasLimit: request.gas
+      // Execute the meta-transaction
+      const hash = await walletClient.writeContract({
+        address: Env.FORWARDER_CONTRACT_ADDRESS,
+        abi: MinimalForwarder.abi,
+        functionName: 'execute',
+        args: [request, signature],
+        gas: BigInt(request.gas)
       });
 
-      return tx;
+      // We can't wait for receipt here as we don't have access to publicClient
+      // This will be handled by the caller
+      return hash;
     } catch (error) {
       console.error('Error executing meta-transaction:', error);
       throw new Error('Failed to execute meta-transaction');
@@ -140,8 +151,19 @@ class MetaTransactionService {
     signature: string
   ): Promise<boolean> {
     try {
-      const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-      return await this.forwarderContract.connect(provider).verify(request, signature);
+      const publicClient = usePublicClient();
+      if (!publicClient) {
+        throw new Error('No public client available');
+      }
+
+      const result = await publicClient.readContract({
+        address: Env.FORWARDER_CONTRACT_ADDRESS,
+        abi: MinimalForwarder.abi,
+        functionName: 'verify',
+        args: [request, signature]
+      });
+      
+      return Boolean(result);
     } catch (error) {
       console.error('Error verifying forward request:', error);
       return false;
@@ -154,24 +176,28 @@ class MetaTransactionService {
   async createDAOVoteMetaTransaction(
     from: string,
     proposalId: number,
-    voteType: number,
-    signer: ethers.Signer,
-    provider: ethers.Provider
-  ): Promise<ethers.TransactionResponse> {
+    voteType: number
+  ): Promise<unknown> {
     try {
       // Create the vote data
-      const daoInterface = new ethers.Interface([
+      const daoAbi = [
         'function castVoteByMetaTx(address from, uint256 proposalId, uint8 voteType, uint256 deadline, bytes calldata signature)'
-      ]);
+      ];
 
       const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
-      const data = daoInterface.encodeFunctionData('castVoteByMetaTx', [
-        from,
-        proposalId,
-        voteType,
-        deadline,
-        '0x' // Signature will be added by the forwarder
-      ]);
+      
+      // Encode the function data for the target contract
+      const data = encodeFunctionData({
+        abi: daoAbi,
+        functionName: 'castVoteByMetaTx',
+        args: [
+          from,
+          proposalId,
+          voteType,
+          deadline,
+          '0x' // Signature will be added by the forwarder
+        ]
+      });
 
       // Create forward request
       const request = this.createForwardRequest(
@@ -182,57 +208,20 @@ class MetaTransactionService {
         30
       );
 
+      // Get wallet client
+      const { data: walletClient } = useWalletClient();
+      if (!walletClient) {
+        throw new Error('Wallet client not available');
+      }
+
       // Sign the request
-      const signature = await this.signForwardRequest(request, signer);
+      const signature = await this.signForwardRequest(request, walletClient);
 
       // Execute the meta-transaction
-      return await this.executeMetaTransaction(request, signature, provider);
+      return await this.executeMetaTransaction(request, signature, walletClient);
     } catch (error) {
       console.error('Error creating DAO vote meta-transaction:', error);
       throw new Error('Failed to create vote meta-transaction');
-    }
-  }
-
-  /**
-   * Helper to create and send a meta-transaction for proposal creation
-   */
-  async createProposalMetaTransaction(
-    from: string,
-    description: string,
-    signer: ethers.Signer,
-    provider: ethers.Provider
-  ): Promise<ethers.TransactionResponse> {
-    try {
-      // Create the proposal data
-      const daoInterface = new ethers.Interface([
-        'function createProposalByMetaTx(address from, string description, uint256 deadline, bytes calldata signature)'
-      ]);
-
-      const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
-      const data = daoInterface.encodeFunctionData('createProposalByMetaTx', [
-        from,
-        description,
-        deadline,
-        '0x' // Signature will be added by the forwarder
-      ]);
-
-      // Create forward request
-      const request = this.createForwardRequest(
-        from,
-        Env.DAO_VOTING_ADDRESS,
-        data,
-        500000,
-        30
-      );
-
-      // Sign the request
-      const signature = await this.signForwardRequest(request, signer);
-
-      // Execute the meta-transaction
-      return await this.executeMetaTransaction(request, signature, provider);
-    } catch (error) {
-      console.error('Error creating proposal meta-transaction:', error);
-      throw new Error('Failed to create proposal meta-transaction');
     }
   }
 }

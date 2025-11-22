@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Env } from '@/utils/config';
-import { ethers } from 'ethers';
+import { createPublicClient, http } from 'viem';
+import { sepolia } from 'viem/chains';
 import DAOVoting from '@/contracts/abis/DAOVoting.json';
+
+// Create a public client for reading data
+const publicClient = createPublicClient({
+  chain: sepolia,
+  transport: http(Env.RPC_URL)
+});
 
 /**
  * Daemon endpoint to check and execute approved proposals
@@ -11,31 +18,46 @@ export async function GET(request: NextRequest) {
   console.log('🔵 [DEBUG] Checking proposals on Anvil');
   
   try {
-    const provider = new ethers.JsonRpcProvider(Env.RPC_URL);
-    
-    // Get network information
-    const network = await provider.getNetwork();
-    
-    // Create contract instance
-    const daoContract = new ethers.Contract(
-      Env.DAO_VOTING_ADDRESS,
-      DAOVoting,
-      provider
-    );
-    
-    // Get proposal count
-    const proposalCount = await daoContract.proposalCount();
+    // Get chain information
+    const chainId = await publicClient.getChainId();
     
     // Get all proposals
     const proposals = [];
-    for (let i = 1; i <= proposalCount; i++) {
+    
+    // We need to known the proposal count. This would typically be stored in the contract
+    // For now, we'll assume we know the count or fetch it through another method
+    // This is a limitation without direct access to contract state
+    
+    // Alternative: Try to fetch proposals until we get an error
+    let proposalId = 1;
+    let hasMore = true;
+    
+    while (hasMore && proposalId <= 100) { // Arbitrary limit to prevent infinite loop
       try {
-        const proposal = await daoContract.proposals(i);
-        const stats = await daoContract.getProposalStats(i);
-        const state = await daoContract.getProposalState(i);
+        // Fetch proposal details
+        const proposal = await publicClient.readContract({
+          address: Env.DAO_VOTING_ADDRESS,
+          abi: DAOVoting.abi,
+          functionName: 'proposals',
+          args: [BigInt(proposalId)]
+        });
+        
+        const stats = await publicClient.readContract({
+          address: Env.DAO_VOTING_ADDRESS,
+          abi: DAOVoting.abi,
+          functionName: 'getProposalStats',
+          args: [BigInt(proposalId)]
+        });
+        
+        const state = await publicClient.readContract({
+          address: Env.DAO_VOTING_ADDRESS,
+          abi: DAOVoting.abi,
+          functionName: 'getProposalState',
+          args: [BigInt(proposalId)]
+        });
         
         proposals.push({
-          id: i,
+          id: proposalId,
           proposalId: proposal.proposalId.toString(),
           proposer: proposal.proposer,
           description: proposal.description,
@@ -48,19 +70,22 @@ export async function GET(request: NextRequest) {
           remainingTime: state.remainingTime.toString(),
           totalVotes: stats.totalVotes.toString()
         });
+        
+        proposalId++;
       } catch (error) {
-        console.log(`Error fetching proposal ${i}:`, error);
+        console.log(`No more proposals found or error at proposal ${proposalId}:`, error);
+        hasMore = false;
       }
     }
     
     return NextResponse.json({
       success: true,
-      network: network.name,
-      chainId: network.chainId,
+      network: 'sepolia',
+      chainId: chainId,
       rpcUrl: Env.RPC_URL,
       daoVotingAddress: Env.DAO_VOTING_ADDRESS,
       forwarderAddress: Env.FORWARDER_CONTRACT_ADDRESS,
-      proposalCount: proposalCount.toString(),
+      proposalCount: proposals.length,
       proposals: proposals,
       timestamp: new Date().toISOString()
     });
