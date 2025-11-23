@@ -1,238 +1,270 @@
 "use client";
 
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useAccount } from 'wagmi';
 import { format } from 'date-fns';
-import { VoteType } from './ProposalList';
+import { enUS } from 'date-fns/locale';
+import { Proposal } from '@/types/dao';
+import { useGaslessVoting } from '@/hooks/useGaslessVoting';
+import { ProposalVoteToast } from './ProposalVoteToast';
+import ProposalVoteModal from './ProposalVoteModal';
 
-/**
- * Interface para las props del componente ProposalCard
- */
 interface ProposalCardProps {
-  id: number;
-  title: string;
-  description: string;
-  creator: string; // Asegurémonos de que creator sea una cadena válida
-  voteCount: number;
-  deadline: Date;
-  status: 'active' | 'passed' | 'rejected' | 'pending' | 'executed';
-  onVote?: (proposalId: number, voteType: VoteType, isGasless?: boolean) => void;
-  userVoted?: boolean;
-  forVotes?: number;
-  againstVotes?: number;
-  abstainVotes?: number;
-  votingInProgress?: boolean;
-  currentVoteType?: VoteType | null;
+  proposal: Proposal;
 }
 
-/**
- * Constantes para colores y estilos reutilizables
- */
-const STATUS_COLORS = {
-  active: 'bg-blue-100 text-blue-800 border-blue-200',
-  passed: 'bg-green-100 text-green-800 border-green-200',
-  rejected: 'bg-red-100 text-red-800 border-red-200',
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  executed: 'bg-purple-100 text-purple-800 border-purple-200',
-  default: 'bg-gray-100 text-gray-800 border-gray-200'
-} as const;
+export default function ProposalCard({ proposal }: ProposalCardProps) {
+  const { address, isConnected } = useAccount();
+  
+  const {
+    isVoting,
+    voteResult,
+    submitVote,
+    clearVoteResult
+  } = useGaslessVoting();
 
-const VOTE_BUTTON_STYLES = {
-  base: 'p-3 rounded-lg font-semibold text-white transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2',
-  for: 'bg-green-500 hover:bg-green-600',
-  against: 'bg-red-500 hover:bg-red-600',
-  abstain: 'bg-yellow-500 hover:bg-yellow-600',
-  loading: 'bg-blue-400'
-} as const;
+  // State for user vote - will check localStorage on load
+  const [userVote, setUserVote] = useState<number | null>(null);
+  const [showVoteModal, setShowVoteModal] = useState(false);
 
-const GASLESS_BUTTON_STYLES = {
-  for: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
-  against: 'bg-red-100 text-red-700 hover:bg-red-200',
-  abstain: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-} as const;
+  // Only show vote button after first client render to avoid hydration mismatch
+  const [isClient, setIsClient] = useState(false);
 
-/**
- * Componente para mostrar una propuesta individual en el DAO
- * Diseño responsive con Tailwind CSS
- */
-export default function ProposalCard({
-  id,
-  title,
-  description,
-  creator,
-  voteCount,
-  deadline,
-  status,
-  onVote,
-  userVoted = false,
-  forVotes = 0,
-  againstVotes = 0,
-  abstainVotes = 0,
-  votingInProgress = false,
-  currentVoteType = null
-}: ProposalCardProps) {
-  // Formatea la dirección del creador para mostrar
-  //const formattedCreator = `${creator.slice(0, 6)}...${creator.slice(-4)}`;
-
-  console.log(creator)
-
-  // Determina el color del estado según el status
-  const statusColor = STATUS_COLORS[status] || STATUS_COLORS.default;
-
-  // Calcula el tiempo restante hasta el deadline
-  const timeRemaining = (() => {
-    const now = new Date();
-    const diff = new Date(deadline).getTime() - now.getTime();
+  useEffect(() => {
+    setIsClient(true);
     
-    if (diff <= 0) return 'Expired';
-    
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (days > 0) {
-      return `${days}d ${hours}h left`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m left`;
-    } else {
-      return `${minutes}m left`;
+    // Check localStorage for previous votes on mount
+    const savedVote = localStorage.getItem(`vote-${proposal.proposalId}`);
+    if (savedVote) {
+      setUserVote(parseInt(savedVote));
     }
-  })();
+  }, [proposal.proposalId]);
 
-  // Verifica si la votación está en progreso para este tipo específico
-  const isVotingInProgress = (voteType: VoteType) => {
-    return votingInProgress && currentVoteType === voteType;
+  const proposalState = useMemo(() => {
+    // Skip timestamp checks until we're on the client
+    if (!isClient) return 'pending';
+
+    const now = Math.floor(Date.now() / 1000);
+    const isAfterStart = now >= Number(proposal.voteStart);
+    const isBeforeEnd = now <= Number(proposal.voteEnd);
+    const isActive = isAfterStart && isBeforeEnd && !proposal.executed;
+    const isDefeated = !proposal.executed && 
+      (Number(proposal.forVotes) <= Number(proposal.againstVotes));
+    
+    if (proposal.executed) return 'executed';
+    if (!isAfterStart) return 'pending';
+    if (isActive) return 'active';
+    if (isDefeated) return 'defeated';
+    return 'succeeded';
+  }, [isClient, proposal]);
+
+  // Use server component for consistent date formatting
+  const formatDate = (date: Date): string => {
+    // Ensure we have a valid date
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    try {
+      // Use the same formatting as server component
+      return format(date, 'MMM d, yyyy h:mm a', { locale: enUS });
+    } catch {
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
   };
+  
+  // Memoized dates
+  const createdDate = useMemo(() => new Date(Number(proposal.createdAt) * 1000), [proposal.createdAt]);
+  
 
-  // Helper para renderizar botones de votación
-  const renderVoteButton = (voteType: VoteType, label: string) => {
-    const isLoading = isVotingInProgress(voteType);
-    const buttonClass = `${VOTE_BUTTON_STYLES.base} ${isLoading ? VOTE_BUTTON_STYLES.loading : VOTE_BUTTON_STYLES[voteType.toLowerCase() as keyof typeof VOTE_BUTTON_STYLES]}`;
 
+  // Format address for display
+  const formatAddress = useCallback((addr: string) => {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  }, []);
+
+  // Memoized vote calculations
+  const { totalVotes, forPercentage, againstPercentage, abstainPercentage } = useMemo(() => {
+    const total = Number(proposal.forVotes) + Number(proposal.againstVotes) + Number(proposal.abstainVotes);
+    const forPct = total > 0 ? (Number(proposal.forVotes) / total) * 100 : 0;
+    const againstPct = total > 0 ? (Number(proposal.againstVotes) / total) * 100 : 0;
+    const abstainPct = total > 0 ? (Number(proposal.abstainVotes) / total) * 100 : 0;
+    
+    return {
+      totalVotes: total,
+      forPercentage: forPct,
+      againstPercentage: againstPct,
+      abstainPercentage: abstainPct
+    };
+  }, [proposal.forVotes, proposal.againstVotes, proposal.abstainVotes]);
+
+  // Handle vote submission with useCallback
+  const handleVote = useCallback(async (support: 1 | 2 | 3) => {
+    if (!isConnected) return;
+    
+    try {
+      const result = await submitVote({
+        proposalId: Number(proposal.proposalId),
+        support
+      });
+      
+      if (result.success) {
+        // Save vote to localStorage
+        localStorage.setItem(`vote-${proposal.proposalId}`, support.toString());
+        setUserVote(support);
+        setShowVoteModal(false);
+      }
+    } catch (err) {
+      console.error('Error voting:', err);
+    }
+  }, [isConnected, submitVote, proposal.proposalId]);
+
+  // Get state badge with consistent styling
+  const getStateBadge = useCallback(() => {
+    const stateConfig = {
+      executed: { className: "bg-green-100 text-green-800", label: "Executed" },
+      defeated: { className: "bg-red-100 text-red-800", label: "Defeated" },
+      pending: { className: "bg-yellow-100 text-yellow-800", label: "Pending" },
+      active: { className: "bg-blue-100 text-blue-800", label: "Active" },
+      succeeded: { className: "bg-green-100 text-green-800", label: "Succeeded" }
+    };
+    
+    const config = stateConfig[proposalState];
     return (
-      <button
-        onClick={() => onVote?.(id, voteType, false)}
-        disabled={userVoted || votingInProgress}
-        className={buttonClass}
-      >
-        {isLoading ? (
-          <>
-            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Voting...</span>
-          </>
-        ) : (
-          <span>{label}</span>
-        )}
-      </button>
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.className}`}>
+        {config.label}
+      </span>
     );
-  };
+  }, [proposalState]);
 
-  // Helper para renderizar botones de votación gasless
-  const renderGaslessButton = (voteType: VoteType, label: string) => (
-    <button
-      onClick={() => onVote?.(id, voteType, true)}
-      disabled={votingInProgress}
-      className={`px-3 py-2 text-xs rounded hover:opacity-80 disabled:opacity-50 ${GASLESS_BUTTON_STYLES[voteType.toLowerCase() as keyof typeof GASLESS_BUTTON_STYLES]}`}
-    >
-      {label} (Gasless)
-    </button>
-  );
+  // Progress bar component for better reusability
+  const ProgressBar = useCallback(({ percentage, color, label, value }: {
+    percentage: number;
+    color: string;
+    label: string;
+    value: string;
+  }) => (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-slate-400">
+        <span>{label}</span>
+        <span>{value} ({percentage.toFixed(1)}%)</span>
+      </div>
+      <div className="w-full bg-slate-600 rounded-full h-2">
+        <div 
+          className={`${color} h-2 rounded-full transition-all duration-300`}
+          style={{ width: `${percentage}%` }}
+        ></div>
+      </div>
+    </div>
+  ), []);
 
+  // Always render with timestamp (never null)
+  // The fallback value of 0 is only used on initial server render and immediately updated on client
+  
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow duration-300">
-      <div className="p-6">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4">
-          <div className="mb-2 sm:mb-0">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
-            <p className="text-gray-600 text-sm">
-              Created by: <span className="font-mono">{creator}</span>
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-600/50 overflow-hidden hover:border-purple-500/50 transition-colors">
+      {/* Header */}
+      <div className="p-4 border-b border-slate-600/50 bg-slate-700/30">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-white">
+              Proposal #{proposal.proposalId.toString()}
+            </h3>
+            {getStateBadge()}
+          </div>
+          
+          <div className="text-right">
+            <p className="text-sm text-slate-300">
+              Created {formatDate(createdDate)}
+            </p>
+            <p className="text-xs text-slate-400">
+              by {formatAddress(proposal.creator)}
             </p>
           </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusColor} whitespace-nowrap mt-2 sm:mt-0`}>
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </span>
         </div>
-
-        <p className="text-gray-700 mb-4 leading-relaxed">{description}</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 text-center">
-          <div className="bg-gray-50 rounded-lg p-3 border">
-            <div className="text-2xl font-bold text-blue-600">{voteCount}</div>
-            <div className="text-xs text-gray-500 uppercase tracking-wider">Total Votes</div>
+      </div>
+      
+      {/* Content */}
+      <div className="p-4">
+        <p className="text-slate-100 mb-4 leading-relaxed">
+          {proposal.description}
+        </p>
+        
+        {/* Voting Info */}
+        <div className="space-y-3 mb-6">
+          <div className="flex justify-between text-sm text-slate-300 mb-2">
+            <span>Vote Distribution</span>
+            <span>{totalVotes} votes</span>
           </div>
-          <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-            <div className="text-lg font-bold text-green-600">{forVotes}</div>
-            <div className="text-xs text-green-600 uppercase tracking-wider">For</div>
-          </div>
-          <div className="bg-red-50 rounded-lg p-3 border border-red-200">
-            <div className="text-lg font-bold text-red-600">{againstVotes}</div>
-            <div className="text-xs text-red-600 uppercase tracking-wider">Against</div>
-          </div>
-          <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
-            <div className="text-lg font-bold text-yellow-600">{abstainVotes}</div>
-            <div className="text-xs text-yellow-600 uppercase tracking-wider">Abstain</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-center">
-          <div className="bg-gray-50 rounded-lg p-3 border">
-            <div className="text-sm font-semibold text-gray-700">
-              {format(new Date(), 'MMM d, yy') }
-            </div>
-            <div className="text-xs text-gray-500">Deadline</div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3 border">
-            <div className="text-sm font-semibold text-orange-600">{timeRemaining}</div>
-            <div className="text-xs text-gray-500">Time Left</div>
-          </div>
-        </div>
-
-        {status === 'active' && onVote && (
+          
+          {/* Progress bars */}
           <div className="space-y-3">
-            <h4 className="font-semibold text-gray-700">Cast your vote:</h4>
+            <ProgressBar
+              percentage={forPercentage}
+              color="bg-green-500"
+              label="For"
+              value={proposal.forVotes.toString()}
+            />
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Vote FOR */}
-              {renderVoteButton('FOR', 'Vote For')}
-              {/* Vote AGAINST */}
-              {renderVoteButton('AGAINST', 'Vote Against')}
-              {/* Vote ABSTAIN */}
-              {renderVoteButton('ABSTAIN', 'Abstain')}
-            </div>
-
-            {/* Gasless voting option */}
-            {!userVoted && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <h5 className="font-semibold text-blue-800 mb-2">Gasless Voting Options:</h5>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  {renderGaslessButton('FOR', 'Vote For')}
-                  {renderGaslessButton('AGAINST', 'Vote Against')}
-                  {renderGaslessButton('ABSTAIN', 'Abstain')}
-                </div>
-                <p className="text-xs text-blue-600 mt-2">
-                  Gasless voting uses meta-transactions - no gas fees required!
-                </p>
-              </div>
-            )}
-
-            {userVoted && (
-              <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-green-700 font-semibold">
-                  ✓ You have already voted on this proposal
-                </p>
-              </div>
-            )}
+            <ProgressBar
+              percentage={againstPercentage}
+              color="bg-red-500"
+              label="Against"
+              value={proposal.againstVotes.toString()}
+            />
+            
+            <ProgressBar
+              percentage={abstainPercentage}
+              color="bg-blue-500"
+              label="Abstain"
+              value={proposal.abstainVotes.toString()}
+            />
           </div>
-        )}
+        </div>
 
-        {status !== 'active' && onVote && userVoted && (
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-sm text-gray-700">
-              You voted on this proposal (Voting closed)
+        {/* Vote Actions */}
+        {isClient && proposalState === 'active' && isConnected && !userVote ? (
+          <div className="px-4 pb-4">
+            <button
+              onClick={() => setShowVoteModal(true)}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              Vote on this proposal
+            </button>
+          </div>
+        ) : isClient && proposalState === 'active' && isConnected && userVote ? (
+          <div className="px-4 pb-4">
+            <p className="text-slate-300 text-sm text-center">
+              You voted {userVote === 1 ? 'for' : userVote === 2 ? 'against' : 'abstain'}
             </p>
           </div>
-        )}
+        ) : isClient && proposalState === 'active' && !isConnected ? (
+          <div className="px-4 pb-4">
+            <p className="text-slate-400 text-sm text-center">
+              Connect wallet to vote
+            </p>
+          </div>
+        ) : null}
+        
+        <ProposalVoteModal
+          proposal={proposal}
+          isOpen={showVoteModal}
+          isVoting={isVoting}
+          onClose={() => setShowVoteModal(false)}
+          onVote={handleVote}
+        />
+        
+        <ProposalVoteToast 
+          voteResult={voteResult} 
+          onClose={clearVoteResult} 
+        />
       </div>
     </div>
   );

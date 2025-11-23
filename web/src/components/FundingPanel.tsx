@@ -1,108 +1,140 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
+import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { parseEther, formatEther } from 'viem';
 
 interface FundingPanelProps {
-  userBalance: string;
-  daoBalance: string;
-  onDeposit: (amount: string) => void;
-  isLoading?: boolean;
+  daoBalance?: string;
+  userBalance?: string;
 }
 
-export default function FundingPanel({
-  userBalance,
-  daoBalance,
-  onDeposit,
-  isLoading = false
-}: FundingPanelProps) {
+export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: FundingPanelProps) {
   const [amount, setAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
 
   const handleDeposit = async () => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
+    if (!address || !walletClient || !amount) return;
     
     setIsDepositing(true);
+    setStatus('idle');
+    setTxHash(null);
+    
     try {
-      await onDeposit(amount);
-      setAmount('');
+      // Simulate the transaction first
+      const { request } = await publicClient.simulateContract({
+        // This would be the actual DAO contract address
+        address: '0xCf7Ed3AccA5a467a9e062Ec7e4784bF65048d170',
+        // This ABI would need to be imported
+        abi: [],
+        functionName: 'deposit',
+        account: address,
+        value: parseEther(amount)
+      });
+      
+      // Send the transaction
+      const hash = await walletClient.writeContract(request);
+      setTxHash(hash);
+      setStatus('success');
+      
+    } catch (error) {
+      console.error('Deposit error:', error);
+      setStatus('error');
     } finally {
       setIsDepositing(false);
     }
   };
 
-  const handleMax = () => {
-    setAmount(userBalance);
-  };
-
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">DAO Funding</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-          <div className="text-sm font-semibold text-blue-800 uppercase tracking-wider mb-1">
-            Your Balance
-          </div>
-          <div className="text-2xl font-bold text-blue-900">
-            {userBalance} ETH
-          </div>
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-purple-500/30 p-6 mb-8">
+      <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+          <path d="M12 2v4"></path>
+          <path d="m16.2 7.8 2.1-2.1"></path>
+          <path d="M18 12h4"></path>
+          <path d="m16.2 16.2 2.1 2.1"></path>
+          <path d="M12 18v4"></path>
+          <path d="m4.9 19.1 2.1-2.1"></path>
+          <path d="M2 12h4"></path>
+          <path d="m4.9 4.9 2.1 2.1"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        Funding Panel
+      </h2>
+
+      <div className="grid md:grid-cols-2 gap-6 mb-6">
+        <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+          <p className="text-sm text-purple-300 mb-1">Your DAO Balance</p>
+          <p className="text-2xl font-bold text-white">{userBalance} ETH</p>
         </div>
-        
-        <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-          <div className="text-sm font-semibold text-green-800 uppercase tracking-wider mb-1">
-            DAO Balance
-          </div>
-          <div className="text-2xl font-bold text-green-900">
-            {daoBalance} ETH
-          </div>
+        <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+          <p className="text-sm text-purple-300 mb-1">DAO Treasury</p>
+          <p className="text-2xl font-bold text-white">{daoBalance} ETH</p>
         </div>
       </div>
-      
+
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Deposit to DAO
+          <label htmlFor="amount" className="block text-sm font-medium text-purple-200 mb-2">
+            Deposit Amount (ETH)
           </label>
-          <div className="flex space-x-2">
-            <div className="relative flex-1">
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                step="0.01"
-                min="0"
-                disabled={isDepositing}
-                className="w-full px-4 py-3 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                <span className="text-gray-500 text-sm font-medium">ETH</span>
-              </div>
-            </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              id="amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.0"
+              className="flex-1 bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
             <button
-              onClick={handleMax}
-              disabled={isDepositing}
-              className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200 disabled:opacity-50"
+              onClick={() => setAmount('')}
+              className="btn btn-outline px-4 py-3"
+              disabled={!amount}
             >
-              Max
+              Clear
             </button>
           </div>
         </div>
-        
+
         <button
           onClick={handleDeposit}
-          disabled={isDepositing || !amount || Number(amount) <= 0 || isLoading}
-          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isDepositing || !amount}
+          className="btn btn-primary w-full"
         >
-          {isDepositing ? (
-            <div className="flex items-center justify-center space-x-2">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>Depositing...</span>
-            </div>
-          ) : (
-            <span>Deposit to DAO</span>
-          )}
+          {isDepositing ? 'Confirming...' : isDepositing ? 'Processing...' : isDepositing ? 'Deposited!' : 'Deposit to DAO'}
         </button>
+
+        {status === 'success' && txHash && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+            <p className="text-green-400 text-sm flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              Deposit successful! <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" className="underline hover:text-green-300">View transaction</a>
+            </p>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+            <p className="text-red-400 text-sm flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              Failed to deposit funds. Please try again.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

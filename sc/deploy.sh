@@ -65,6 +65,9 @@ FORWARDER_ADDRESS=$FORWARDER_ADDRESS
 DAO_ADDRESS=$DAO_ADDRESS
 RPC_URL=$RPC_URL
 EOF
+
+cat .env >> ../web/.env.local
+
             echo_success "Deployment addresses saved to .env file"
         else
             echo_warning "Could not extract contract addresses from deployment output"

@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "./components/navigation.css";
+@import "./components/layout.css";
+@import "./components/ui.css";
+@import "./components/connect.css";
+@import "./components/funding.css";
+@import "./components/forms.css";
+@import "./components/proposal-card.css";

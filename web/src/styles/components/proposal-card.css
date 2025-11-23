@@ -1,0 +1,95 @@
+@layer components {
+  /* Main proposal card styles */
+  .proposal-card {
+    background-color: rgba(30, 41, 59, 0.5);
+    backdrop-filter: blur(8px);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  
+  .proposal-card:hover {
+    border-color: rgba(168, 85, 247, 0.5);
+  }
+  
+  /* Header styles */
+  .proposal-header {
+    padding: 1rem;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+    background-color: rgba(51, 65, 85, 0.3);
+  }
+  
+  /* Content styles */
+  .proposal-content {
+    padding: 1rem;
+  }
+  
+  /* Vote progress bars */
+  .vote-progress {
+    width: 100%;
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    transition: all 0.3s;
+  }
+  
+  /* Vote button */
+  .vote-button {
+    width: 100%;
+    font-weight: 500;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+  }
+  
+  .vote-button:hover:not(:disabled) {
+    transform: scale(1.02);
+  }
+  
+  .vote-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Vote modal */
+  .vote-modal {
+    background-color: rgb(30, 41, 59);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    border: 1px solid rgb(75, 85, 99);
+    width: 100%;
+    max-width: 28rem;
+    margin: 0 auto;
+    z-index: 9999;
+  }
+  
+  /* Vote option */
+  .vote-option {
+    padding: 0.75rem;
+    text-align: left;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    transition: all 0.2s;
+  }
+  
+  .vote-option:hover:not(:disabled) {
+    border-color: rgba(168, 85, 247, 0.5);
+  }
+  
+  .vote-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Vote cancel button */
+  .vote-cancel-button {
+    width: 100%;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+  }
+  
+  .vote-cancel-button:hover:not(:disabled) {
+    background-color: rgba(51, 65, 85, 0.5);
+  }
+}

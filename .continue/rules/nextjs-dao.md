@@ -28,12 +28,12 @@ invokable: true
 **2. Desarrollo de Componentes (Next.js):**
    - Usa **Componentes de Función** y Hooks.
    - Utiliza extructura consistente en los jsx  para tener un diseño consistente para que sea responsive y sea estable tanto para desktop como mobile.
-   - Usa **Tailwind y todas las dependencias que sean necesarias** si el proyecto los usa.
+   - Usa **Tailwind y todas las dependencias que sean necesarias** .
 
 **3. Diseño de Interfaz (Responsividad):**
    - **Responsivo por Defecto:** Todo el código de UI debe ser diseñado utilizando un enfoque web3
 **4. interacion con la wallet**
-   - usa la dependecia ethersjs 
+   - usa la dependecia viem 
    - implementa la interaccion con metamask
 
 
@@ -51,7 +51,7 @@ invokable: true
    - **Formato:** El código debe seguir las reglas definidas por **ESLint** y **Prettier**.
    - **Nomenclatura:** Utiliza **CamelCase** para variables y funciones, y **PascalCase** para componentes y tipos.
    - **Comentarios:** Documenta funciones y tipos complejos usando **TSDoc** (o JSDoc),  generar documentación de forma consistente.
-   - **Reporte** generar un archivo docs.md donde se describa todas las funcionalidades realizadas y una descripcion funcional del codigo
+   - **Reporte** generar un archivo marckdown donde se describa todas las funcionalidades realizadas y una descripcion funcional del codigo
    - genera un **archivo .env** con todas las variables necesarias para iniciar la aplicacion
    - **verifica la conecion** a las cuentas de anvil
    - **se consistente con la implementacion**  package.json, define claramente todos los comandos necesarios para poder ejecutar la aplicacion **se muy extricto en esta definicion y en el uso** chequea que los comandos funcionen correctamente
