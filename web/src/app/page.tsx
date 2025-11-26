@@ -1,9 +1,6 @@
 "use client";
 
-import { Header } from '@/components';
-import FundingPanel from '@/components/FundingPanel';
-import CreateProposal from '@/components/CreateProposal';
-import ProposalList from '@/components/ProposalList';
+import { Header, FundingPanel, CreateProposal, ProposalList } from '@/components';
 
 export default function Home() {
   return (

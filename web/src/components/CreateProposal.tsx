@@ -11,10 +11,17 @@ interface CreateProposalProps {
 
 export default function CreateProposal({ onProposalCreated }: CreateProposalProps) {
   const { address, isConnected } = useAccount();
+  
+  // Calculate default deadline on the client side only
+  const getDefaultDeadline = () => {
+    if (typeof window === 'undefined') return 0; // Server-side: return 0
+    return Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // Client-side: calculate
+  };
+
   const [formValues, setFormValues] = useState<ProposalForm>({
     title: '',
     description: '',
-    deadline: 0 // Inicializar en 0, se establecerá en useEffect
+    deadline: getDefaultDeadline() // Use the function to get consistent value
   });
 
   const {
@@ -27,14 +34,6 @@ export default function CreateProposal({ onProposalCreated }: CreateProposalProp
   } = useCreateProposal();
 
   const [uiError, setUiError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Establecer el valor por defecto solo en el cliente
-    setFormValues(prev => ({
-      ...prev,
-      deadline: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60 // 7 días desde ahora
-    }));
-  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -90,7 +89,7 @@ export default function CreateProposal({ onProposalCreated }: CreateProposalProp
     setFormValues({
       title: '',
       description: '',
-      deadline: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+      deadline: getDefaultDeadline()
     });
     reset();
     setUiError(null);

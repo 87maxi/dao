@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
 import { Proposal } from '@/types/dao';
-import DAOVotingABI from '@/lib/contracts/DAOVoting.json';
+import DAOVotingABI from '@/contracts/abis/DAOVoting.json';
 
 interface UseProposals {
   proposals: Proposal[];
@@ -30,7 +30,7 @@ export function useProposals(): UseProposals {
       // Leer el número total de propuestas
       const proposalCount = await publicClient.readContract({
         address: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
-        abi: DAOVotingABI.abi,
+        abi: DAOVotingABI,
         functionName: 'proposalCount'
       });
 
@@ -51,7 +51,7 @@ export function useProposals(): UseProposals {
       const proposalPromises = proposalIds.map(id =>
         publicClient.readContract({
           address: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
-          abi: DAOVotingABI.abi,
+          abi: DAOVotingABI,
           functionName: 'proposals',
           args: [id]
         })
