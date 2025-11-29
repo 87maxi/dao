@@ -15,7 +15,7 @@ interface ProposalCardProps {
 
 export default function ProposalCard({ proposal }: ProposalCardProps) {
   const { address, isConnected } = useAccount();
-  
+
   const {
     isVoting,
     voteResult,
@@ -32,7 +32,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
 
   useEffect(() => {
     setIsClient(true);
-    
+
     // Check localStorage for previous votes on mount
     const savedVote = localStorage.getItem(`vote-${proposal.proposalId}`);
     if (savedVote) {
@@ -48,9 +48,9 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
     const isAfterStart = now >= Number(proposal.voteStart);
     const isBeforeEnd = now <= Number(proposal.voteEnd);
     const isActive = isAfterStart && isBeforeEnd && !proposal.executed;
-    const isDefeated = !proposal.executed && 
+    const isDefeated = !proposal.executed &&
       (Number(proposal.forVotes) <= Number(proposal.againstVotes));
-    
+
     if (proposal.executed) return 'executed';
     if (!isAfterStart) return 'pending';
     if (isActive) return 'active';
@@ -64,7 +64,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
       return 'Invalid Date';
     }
-    
+
     try {
       // Use the same formatting as server component
       return format(date, 'MMM d, yyyy h:mm a', { locale: enUS });
@@ -79,10 +79,10 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
       });
     }
   };
-  
+
   // Memoized dates
   const createdDate = useMemo(() => new Date(Number(proposal.createdAt) * 1000), [proposal.createdAt]);
-  
+
 
 
   // Format address for display
@@ -96,7 +96,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
     const forPct = total > 0 ? (Number(proposal.forVotes) / total) * 100 : 0;
     const againstPct = total > 0 ? (Number(proposal.againstVotes) / total) * 100 : 0;
     const abstainPct = total > 0 ? (Number(proposal.abstainVotes) / total) * 100 : 0;
-    
+
     return {
       totalVotes: total,
       forPercentage: forPct,
@@ -108,13 +108,13 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
   // Handle vote submission with useCallback
   const handleVote = useCallback(async (support: 1 | 2 | 3) => {
     if (!isConnected) return;
-    
+
     try {
       const result = await submitVote({
         proposalId: Number(proposal.proposalId),
         support
       });
-      
+
       if (result.success) {
         // Save vote to localStorage
         localStorage.setItem(`vote-${proposal.proposalId}`, support.toString());
@@ -135,7 +135,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
       active: { className: "bg-blue-100 text-blue-800", label: "Active" },
       succeeded: { className: "bg-green-100 text-green-800", label: "Succeeded" }
     };
-    
+
     const config = stateConfig[proposalState];
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.className}`}>
@@ -150,24 +150,32 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
     color: string;
     label: string;
     value: string;
-  }) => (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs text-slate-400">
-        <span>{label}</span>
-        <span>{value} ({percentage.toFixed(1)}%)</span>
+  }) => {
+    // Ensure minimum width for visibility when there are votes
+    const displayWidth = percentage > 0 && percentage < 2 ? 2 : percentage;
+
+    return (
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs">
+          <span className="text-slate-300 font-medium">{label}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-white">{percentage.toFixed(1)}%</span>
+            <span className="text-xs text-slate-400">({value} votes)</span>
+          </div>
+        </div>
+        <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden border border-slate-600/30">
+          <div
+            className={`${color} h-2.5 rounded-full transition-all duration-500 ease-out`}
+            style={{ width: `${displayWidth}%` }}
+          ></div>
+        </div>
       </div>
-      <div className="w-full bg-slate-600 rounded-full h-2">
-        <div 
-          className={`${color} h-2 rounded-full transition-all duration-300`}
-          style={{ width: `${percentage}%` }}
-        ></div>
-      </div>
-    </div>
-  ), []);
+    );
+  }, []);
 
   // Always render with timestamp (never null)
   // The fallback value of 0 is only used on initial server render and immediately updated on client
-  
+
   return (
     <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-600/50 overflow-hidden hover:border-purple-500/50 transition-colors">
       {/* Header */}
@@ -179,7 +187,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
             </h3>
             {getStateBadge()}
           </div>
-          
+
           <div className="text-right">
             <p className="text-sm text-slate-300">
               Created {formatDate(createdDate)}
@@ -190,20 +198,20 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
           </div>
         </div>
       </div>
-      
+
       {/* Content */}
       <div className="p-4">
         <p className="text-slate-100 mb-4 leading-relaxed">
           {proposal.description}
         </p>
-        
+
         {/* Voting Info */}
         <div className="space-y-3 mb-6">
           <div className="flex justify-between text-sm text-slate-300 mb-2">
             <span>Vote Distribution</span>
             <span>{totalVotes} votes</span>
           </div>
-          
+
           {/* Progress bars */}
           <div className="space-y-3">
             <ProgressBar
@@ -212,14 +220,14 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
               label="For"
               value={proposal.forVotes.toString()}
             />
-            
+
             <ProgressBar
               percentage={againstPercentage}
               color="bg-red-500"
               label="Against"
               value={proposal.againstVotes.toString()}
             />
-            
+
             <ProgressBar
               percentage={abstainPercentage}
               color="bg-blue-500"
@@ -252,7 +260,7 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
             </p>
           </div>
         ) : null}
-        
+
         <ProposalVoteModal
           proposal={proposal}
           isOpen={showVoteModal}
@@ -260,10 +268,10 @@ export default function ProposalCard({ proposal }: ProposalCardProps) {
           onClose={() => setShowVoteModal(false)}
           onVote={handleVote}
         />
-        
-        <ProposalVoteToast 
-          voteResult={voteResult} 
-          onClose={clearVoteResult} 
+
+        <ProposalVoteToast
+          voteResult={voteResult}
+          onClose={clearVoteResult}
         />
       </div>
     </div>

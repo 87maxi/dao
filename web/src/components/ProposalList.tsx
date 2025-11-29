@@ -6,13 +6,15 @@ import ProposalCard from './ProposalCard';
 import { useProposals } from '@/hooks/useProposals';
 
 // Mock proposal data - in a real app, this would come from the smart contract
+// Using static timestamps to prevent hydration mismatches
+const BASE_TIMESTAMP = 1732850000000; // Fixed timestamp: Nov 29, 2024
 const mockProposals = [
   {
     proposalId: 1n,
     description: "Upgrade to new governance token",
-    createdAt: BigInt(Date.now() - 86400000), // 1 day ago
-    voteStart: BigInt(Date.now() - 43200000), // 12 hours ago
-    voteEnd: BigInt(Date.now() + 172800000), // 2 days from now
+    createdAt: BigInt(BASE_TIMESTAMP - 86400000), // 1 day before base
+    voteStart: BigInt(BASE_TIMESTAMP - 43200000), // 12 hours before base
+    voteEnd: BigInt(BASE_TIMESTAMP + 172800000), // 2 days after base
     creator: "0x742d35Cc6634C0532925a3b8D4Cfb2B1b5412151" as `0x${string}`,
     executed: false,
     forVotes: 50n,
@@ -22,9 +24,9 @@ const mockProposals = [
   {
     proposalId: 2n,
     description: "Allocate funds for marketing campaign",
-    createdAt: BigInt(Date.now() - 172800000), // 2 days ago
-    voteStart: BigInt(Date.now() - 129600000), // 1.5 days ago
-    voteEnd: BigInt(Date.now() + 86400000), // 1 day from now
+    createdAt: BigInt(BASE_TIMESTAMP - 172800000), // 2 days before base
+    voteStart: BigInt(BASE_TIMESTAMP - 129600000), // 1.5 days before base
+    voteEnd: BigInt(BASE_TIMESTAMP + 86400000), // 1 day after base
     creator: "0x37bd261E5bE21203d0Dc5B827D3017B1754458Af" as `0x${string}`,
     executed: false,
     forVotes: 30n,
@@ -34,9 +36,9 @@ const mockProposals = [
   {
     proposalId: 3n,
     description: "Add new project to investment portfolio",
-    createdAt: BigInt(Date.now() - 43200000), // 12 hours ago
-    voteStart: BigInt(Date.now() - 32400000), // 9 hours ago
-    voteEnd: BigInt(Date.now() + 259200000), // 3 days from now
+    createdAt: BigInt(BASE_TIMESTAMP - 43200000), // 12 hours before base
+    voteStart: BigInt(BASE_TIMESTAMP - 32400000), // 9 hours before base
+    voteEnd: BigInt(BASE_TIMESTAMP + 259200000), // 3 days after base
     creator: "0x5015968b878d5e81B4Bd79C1787EF3B9bF51a79D" as `0x${string}`,
     executed: false,
     forVotes: 60n,

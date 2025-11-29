@@ -1,48 +1,55 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { useState, useEffect } from "react";
+import { useAccount, useWalletClient, useBalance } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 
-interface FundingPanelProps {
-  daoBalance?: string;
-  userBalance?: string;
-}
-
-export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: FundingPanelProps) {
+export default function FundingPanel() {
   const [amount, setAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
 
+  // Get treasury balance
+  const { data: treasuryBalance, refetch: refetchTreasury } = useBalance({
+    address: process.env.NEXT_PUBLIC_TREASURY_ADDRESS as `0x${string}`,
+  });
+
+  // Get user's balance
+  const { data: userBalance, refetch: refetchUser } = useBalance({
+    address: address,
+  });
+
   const handleDeposit = async () => {
-    if (!address || !walletClient || !amount) return;
-    
+    if (!address || !walletClient || !amount || !isConnected) {
+      setStatus('error');
+      return;
+    }
+
     setIsDepositing(true);
     setStatus('idle');
     setTxHash(null);
-    
+
     try {
-      // Simulate the transaction first
-      const { request } = await publicClient.simulateContract({
-        // This would be the actual DAO contract address
-        address: '0xCf7Ed3AccA5a467a9e062Ec7e4784bF65048d170',
-        // This ABI would need to be imported
-        abi: [],
-        functionName: 'deposit',
-        account: address,
-        value: parseEther(amount)
-      });
-      
-      // Send the transaction
-      const hash = await walletClient.writeContract(request);
+      // Send ETH to the DAO treasury address (EOA wallet)
+      const hash = await walletClient.sendTransaction({
+        to: process.env.NEXT_PUBLIC_TREASURY_ADDRESS as `0x${string}`,
+        value: parseEther(amount),
+      } as any);
+
       setTxHash(hash);
       setStatus('success');
-      
+      setAmount(''); // Clear amount after successful deposit
+
+      // Refetch balances after successful deposit
+      setTimeout(() => {
+        refetchTreasury();
+        refetchUser();
+      }, 2000); // Wait 2 seconds for transaction to be mined
+
     } catch (error) {
       console.error('Deposit error:', error);
       setStatus('error');
@@ -51,8 +58,18 @@ export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: Fu
     }
   };
 
+  // Auto-refresh balances every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchTreasury();
+      if (address) refetchUser();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [address, refetchTreasury, refetchUser]);
+
   return (
-    <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-purple-500/30 p-6 mb-8">
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-purple-500/30 p-6 sticky top-8">
       <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
           <path d="M12 2v4"></path>
@@ -65,17 +82,28 @@ export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: Fu
           <path d="m4.9 4.9 2.1 2.1"></path>
           <circle cx="12" cy="12" r="3"></circle>
         </svg>
-        Funding Panel
+        Treasury
       </h2>
 
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
-        <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
-          <p className="text-sm text-purple-300 mb-1">Your DAO Balance</p>
-          <p className="text-2xl font-bold text-white">{userBalance} ETH</p>
-        </div>
+      {/* Info message about treasury */}
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-6">
+        <p className="text-blue-300 text-xs">
+          💡 Deposits are sent to the DAO treasury wallet for secure fund management.
+        </p>
+      </div>
+
+      <div className="space-y-4 mb-6">
         <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
           <p className="text-sm text-purple-300 mb-1">DAO Treasury</p>
-          <p className="text-2xl font-bold text-white">{daoBalance} ETH</p>
+          <p className="text-3xl font-bold text-white">
+            {treasuryBalance ? parseFloat(formatEther(treasuryBalance.value)).toFixed(4) : '0.0000'} ETH
+          </p>
+        </div>
+        <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600">
+          <p className="text-sm text-purple-300 mb-1">Your Balance</p>
+          <p className="text-2xl font-bold text-white">
+            {userBalance ? parseFloat(formatEther(userBalance.value)).toFixed(4) : '0.0000'} ETH
+          </p>
         </div>
       </div>
 
@@ -84,32 +112,33 @@ export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: Fu
           <label htmlFor="amount" className="block text-sm font-medium text-purple-200 mb-2">
             Deposit Amount (ETH)
           </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              id="amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.0"
-              className="flex-1 bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-            <button
-              onClick={() => setAmount('')}
-              className="btn btn-outline px-4 py-3"
-              disabled={!amount}
-            >
-              Clear
-            </button>
-          </div>
+          <input
+            type="number"
+            id="amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.0"
+            step="0.01"
+            min="0"
+            className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
         </div>
 
-        <button
-          onClick={handleDeposit}
-          disabled={isDepositing || !amount}
-          className="btn btn-primary w-full"
-        >
-          {isDepositing ? 'Confirming...' : isDepositing ? 'Processing...' : isDepositing ? 'Deposited!' : 'Deposit to DAO'}
-        </button>
+        {!isConnected ? (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+            <p className="text-yellow-400 text-sm text-center">
+              Connect wallet to deposit
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={handleDeposit}
+            disabled={isDepositing || !amount || parseFloat(amount) <= 0}
+            className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDepositing ? 'Processing...' : 'Deposit to DAO'}
+          </button>
+        )}
 
         {status === 'success' && txHash && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
@@ -118,7 +147,7 @@ export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: Fu
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
-              Deposit successful! <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" className="underline hover:text-green-300">View transaction</a>
+              Deposit successful! <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="underline hover:text-green-300">View transaction</a>
             </p>
           </div>
         )}
@@ -131,7 +160,7 @@ export default function FundingPanel({ daoBalance = '0', userBalance = '0' }: Fu
                 <line x1="12" y1="8" x2="12" y2="12"></line>
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
-              Failed to deposit funds. Please try again.
+              {!isConnected ? 'Please connect your wallet' : 'Failed to deposit. Please try again.'}
             </p>
           </div>
         )}

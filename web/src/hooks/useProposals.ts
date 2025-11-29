@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
 import { Proposal } from '@/types/dao';
 import DAOVotingABI from '@/contracts/abis/DAOVoting.json';
@@ -19,13 +19,13 @@ export function useProposals(): UseProposals {
   const { address } = useAccount();
   const publicClient = usePublicClient();
 
-  const fetchProposals = async () => {
+  const fetchProposals = useCallback(async () => {
     if (!publicClient) return;
 
     setLoading(true);
     setError(null);
     console.log(process.env.NEXT_PUBLIC_DAO_ADDRESS);
-    
+
     try {
       // Leer el número total de propuestas
       const proposalCount = await publicClient.readContract({
@@ -34,7 +34,7 @@ export function useProposals(): UseProposals {
         functionName: 'proposalCount'
       });
 
-      
+
 
       // Si no hay propuestas, retornar array vacío
       if (!proposalCount || proposalCount === BigInt(0)) {
@@ -71,12 +71,8 @@ export function useProposals(): UseProposals {
         forVotes: data.forVotes,
         againstVotes: data.againstVotes,
         abstainVotes: data.abstainVotes
-      })).filter(proposal => 
-        // Filtrar propuestas válidas y que están en curso o pendientes
-        Date.now() <= Number(proposal.voteEnd) || 
-        !proposal.executed
-      ) as Proposal[];
-      
+      })) as Proposal[];
+
 
 
       setProposals(formattedProposals);
@@ -86,16 +82,16 @@ export function useProposals(): UseProposals {
     } finally {
       setLoading(false);
     }
-  };
+  }, [publicClient]);
 
-  // Fetch proposals on component mount and when address changes
+  // Fetch proposals on component mount and when dependencies change
   useEffect(() => {
     fetchProposals();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(fetchProposals, 30000);
     return () => clearInterval(interval);
-  }, [address, publicClient]);
+  }, [fetchProposals]);
 
   const refresh = () => {
     fetchProposals();

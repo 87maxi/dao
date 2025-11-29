@@ -11,18 +11,23 @@ interface CreateProposalProps {
 
 export default function CreateProposal({ onProposalCreated }: CreateProposalProps) {
   const { address, isConnected } = useAccount();
-  
-  // Calculate default deadline on the client side only
-  const getDefaultDeadline = () => {
-    if (typeof window === 'undefined') return 0; // Server-side: return 0
-    return Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // Client-side: calculate
-  };
 
   const [formValues, setFormValues] = useState<ProposalForm>({
     title: '',
     description: '',
-    deadline: getDefaultDeadline() // Use the function to get consistent value
+    deadline: 0 // Initialize with 0 to match server render
   });
+
+  // Set default deadline on client-side only after mount
+  useEffect(() => {
+    if (formValues.deadline === 0) {
+      const defaultDeadline = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+      setFormValues(prev => ({
+        ...prev,
+        deadline: defaultDeadline
+      }));
+    }
+  }, []); // Run once on mount
 
   const {
     isPending,
@@ -53,43 +58,44 @@ export default function CreateProposal({ onProposalCreated }: CreateProposalProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Reset states
     setUiError(null);
-    
+
     if (!isConnected) {
       setUiError('Wallet not connected');
       return;
     }
-    
+
     if (!formValues.title?.trim()) {
       setUiError('Proposal title is required');
       return;
     }
-    
+
     if (!formValues.description?.trim()) {
       setUiError('Proposal description is required');
       return;
     }
-    
+
     try {
       // Create the proposal
       await createProposal(formValues);
-      
+
       if (onProposalCreated) {
         onProposalCreated();
       }
-      
+
     } catch (err) {
       console.error('Error creating proposal:', err);
     }
   };
 
   const handleReset = () => {
+    const defaultDeadline = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
     setFormValues({
       title: '',
       description: '',
-      deadline: getDefaultDeadline()
+      deadline: defaultDeadline
     });
     reset();
     setUiError(null);
@@ -112,7 +118,7 @@ export default function CreateProposal({ onProposalCreated }: CreateProposalProp
             </div>
           </div>
         </div>
-        
+
         <button
           onClick={handleReset}
           className="btn btn-primary w-full"

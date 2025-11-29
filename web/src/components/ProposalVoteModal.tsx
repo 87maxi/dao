@@ -23,13 +23,11 @@ export default function ProposalVoteModal({
   onVote
 }: ProposalVoteModalProps) {
   const formatDate = (date: Date): string => {
-    // Ensure we have a valid date
     if (!(date instanceof Date) || isNaN(date.getTime())) {
       return 'Invalid Date';
     }
-    
+
     try {
-      // Use the same formatting as server component
       return format(date, 'MMM d, yyyy h:mm a', { locale: enUS });
     } catch {
       return date.toLocaleString('en-US', {
@@ -43,7 +41,6 @@ export default function ProposalVoteModal({
     }
   };
 
-  // Format bigints to numbers for display
   const formatBigInt = (value: bigint): string => {
     return Number(value).toLocaleString();
   };
@@ -54,8 +51,6 @@ export default function ProposalVoteModal({
   const againstPercentage = totalVotes > 0 ? (Number(proposal.againstVotes) / totalVotes) * 100 : 0;
   const abstainPercentage = totalVotes > 0 ? (Number(proposal.abstainVotes) / totalVotes) * 100 : 0;
 
-  
-  // Determine winner
   const winningOption = () => {
     if (forPercentage > againstPercentage && forPercentage > abstainPercentage) return 'For';
     if (againstPercentage > forPercentage && againstPercentage > abstainPercentage) return 'Against';
@@ -75,178 +70,205 @@ export default function ProposalVoteModal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+          <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm transition-opacity" />
         </Transition.Child>
 
         <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+          <div className="flex min-h-full items-center justify-center p-4">
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-300"
-              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-              enterTo="opacity-100 translate-y-0 sm:scale-100"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
               leave="ease-in duration-200"
-              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-slate-800 px-4 pt-5 pb-4 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
-                <div className="absolute top-0 right-0 pt-4 pr-4">
+              <Dialog.Panel className="relative transform overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 border border-purple-500/30 shadow-2xl transition-all w-full max-w-2xl">
+                {/* Close button */}
+                <div className="absolute top-4 right-4 z-10">
                   <button
                     type="button"
-                    className="rounded-md bg-slate-800 text-slate-400 hover:text-slate-500 focus:outline-none"
+                    className="rounded-lg bg-slate-700/50 p-2 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
                     onClick={onClose}
                   >
                     <span className="sr-only">Close</span>
-                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
+                    <XMarkIcon className="h-5 w-5" aria-hidden="true" />
                   </button>
                 </div>
-                                    <div className="sm:flex sm:items-start">
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                    <div className="flex flex-col space-y-4 max-h-[70vh] overflow-y-auto">
-                      <Dialog.Title
-                        as="h3"
-                        className="text-lg font-semibold leading-6 text-white"
-                      >
-                        Vote on Proposal #{proposal.proposalId.toString()}
-                      </Dialog.Title>
-                      
-                      {/* Proposal Information */}
-                      <div className="mt-4 space-y-4">
-                        <div>
-                          <label className="text-xs font-medium text-purple-200 uppercase tracking-wider">Proposal Details</label>
-                          <p className="text-slate-100 mt-1 leading-relaxed bg-slate-700/50 rounded-lg p-3 border border-slate-600">
-                            {proposal.description}
-                          </p>
-                        </div>
-                        
-                        {/* Proposal Metadata */}
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                            <span className="font-medium text-purple-200">Proposal ID</span>
-                            <span className="text-slate-100 font-mono text-sm">#{proposal.proposalId.toString()}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                            <span className="font-medium text-purple-200">Created</span>
-                            <span className="text-slate-100">{formatDate(new Date(Number(proposal.createdAt) * 1000))}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                            <span className="font-medium text-purple-200">Voting Start</span>
-                            <span className="text-slate-100">{formatDate(new Date(Number(proposal.voteStart) * 1000))}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                            <span className="font-medium text-purple-200">Deadline</span>
-                            <span className="text-slate-100">{formatDate(new Date(Number(proposal.voteEnd) * 1000))}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                            <span className="font-medium text-purple-200">Proposed By</span>
-                            <span className="text-slate-100 font-mono text-sm">{proposal.creator.slice(0, 6)}...{proposal.creator.slice(-4)}</span>
-                          </div>
+
+                <div className="p-6 sm:p-8">
+                  {/* Header */}
+                  <div className="mb-6">
+                    <Dialog.Title className="text-2xl font-bold text-white mb-2">
+                      Vote on Proposal #{proposal.proposalId.toString()}
+                    </Dialog.Title>
+                    <p className="text-sm text-purple-300">Cast your vote to participate in DAO governance</p>
+                  </div>
+
+                  <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+                    {/* Proposal Description */}
+                    <div className="bg-slate-700/30 backdrop-blur-sm rounded-xl p-4 border border-slate-600/50">
+                      <label className="text-xs font-semibold text-purple-300 uppercase tracking-wider mb-2 block">
+                        Proposal Details
+                      </label>
+                      <p className="text-slate-100 leading-relaxed">
+                        {proposal.description}
+                      </p>
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-3 border border-slate-600/50">
+                        <span className="text-xs font-medium text-purple-300 block mb-1">Proposal ID</span>
+                        <span className="text-white font-mono text-sm">#{proposal.proposalId.toString()}</span>
+                      </div>
+
+                      <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-3 border border-slate-600/50">
+                        <span className="text-xs font-medium text-purple-300 block mb-1">Created</span>
+                        <span className="text-white text-xs">{formatDate(new Date(Number(proposal.createdAt) * 1000))}</span>
+                      </div>
+
+                      <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-3 border border-slate-600/50">
+                        <span className="text-xs font-medium text-purple-300 block mb-1">Voting Ends</span>
+                        <span className="text-white text-xs">{formatDate(new Date(Number(proposal.voteEnd) * 1000))}</span>
+                      </div>
+
+                      <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-3 border border-slate-600/50">
+                        <span className="text-xs font-medium text-purple-300 block mb-1">Proposed By</span>
+                        <span className="text-white font-mono text-xs">{proposal.creator.slice(0, 6)}...{proposal.creator.slice(-4)}</span>
+                      </div>
+                    </div>
+
+                    {/* Vote Statistics */}
+                    <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 backdrop-blur-sm rounded-xl p-5 border border-purple-500/30">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-purple-200 uppercase tracking-wider">Current Results</h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">{totalVotes} total votes</span>
+                          <span className="px-2 py-1 bg-purple-500/20 rounded text-xs font-medium text-purple-300">
+                            Leading: {winningOption()}
+                          </span>
                         </div>
                       </div>
-                      
-                      {/* Vote Statistics */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-medium text-purple-200 uppercase tracking-wider">Vote Statistics</label>
-                          <span className="text-xs text-slate-400">{totalVotes} votes (Winner: {winningOption()})</span>
-                        </div>
-                        
+
+                      <div className="space-y-4">
                         {/* For Votes */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="flex items-center text-green-400">
-                              <CheckCircleIcon className="h-4 w-4 mr-1.5" />
-                              <span className="font-medium">For</span>
-                            </span>
-                            <div className="flex items-baseline space-x-2">
-                              <span className="text-sm font-bold text-green-400">{forPercentage.toFixed(1)}%</span>
-                              <span className="text-xs text-slate-400">({formatBigInt(proposal.forVotes)})</span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-slate-600 rounded-full h-2">
-                            <div className="bg-green-500 h-2 rounded-full transition-all duration-300" style={{ width: `${forPercentage}%` }}></div>
-                          </div>
-                        </div>
-                        
-                        {/* Against Votes */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="flex items-center text-red-400">
-                              <XCircleIcon className="h-4 w-4 mr-1.5" />
-                              <span className="font-medium">Against</span>
-                            </span>
-                            <div className="flex items-baseline space-x-2">
-                              <span className="text-sm font-bold text-red-400">{againstPercentage.toFixed(1)}%</span>
-                              <span className="text-xs text-slate-400">({formatBigInt(proposal.againstVotes)})</span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-slate-600 rounded-full h-2">
-                            <div className="bg-red-500 h-2 rounded-full transition-all duration-300" style={{ width: `${againstPercentage}%` }}></div>
-                          </div>
-                        </div>
-                        
-                        {/* Abstain Votes */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="flex items-center text-blue-400">
-                              <QuestionMarkCircleIcon className="h-4 w-4 mr-1.5" />
-                              <span className="font-medium">Abstain</span>
-                            </span>
-                            <div className="flex items-baseline space-x-2">
-                              <span className="text-sm font-bold text-blue-400">{abstainPercentage.toFixed(1)}%</span>
-                              <span className="text-xs text-slate-400">({formatBigInt(proposal.abstainVotes)})</span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-slate-600 rounded-full h-2">
-                            <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${abstainPercentage}%` }}></div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Vote Options */}
-                      <div className="space-y-3 mt-6">
-                        <div className="pt-4 border-t border-slate-600">
-                          <button
-                            onClick={() => onVote(1)}
-                            disabled={isVoting}
-                            className="w-full p-3 text-left bg-green-600/20 hover:bg-green-600/30 rounded-lg border border-green-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <div className="font-medium text-green-400 flex items-center">
-                              <CheckCircleIcon className="h-4 w-4 mr-2" fill="currentColor" />
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="flex items-center text-green-400 font-medium">
+                              <CheckCircleIcon className="h-4 w-4 mr-2" />
                               For
+                            </span>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-lg font-bold text-green-400">{forPercentage.toFixed(1)}%</span>
+                              <span className="text-sm text-slate-400">({formatBigInt(proposal.forVotes)} votes)</span>
                             </div>
-                            <div className="text-sm text-slate-300">Support this proposal</div>
-                          </button>
-                          
-                          <button
-                            onClick={() => onVote(2)}
-                            disabled={isVoting}
-                            className="w-full p-3 text-left bg-red-600/20 hover:bg-red-600/30 rounded-lg border border-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <div className="font-medium text-red-400 flex items-center">
-                              <XCircleIcon className="h-4 w-4 mr-2" fill="currentColor" />
+                          </div>
+                          <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-green-500 to-green-400 h-3 rounded-full transition-all duration-500 shadow-lg shadow-green-500/50"
+                              style={{ width: `${forPercentage}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Against Votes */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="flex items-center text-red-400 font-medium">
+                              <XCircleIcon className="h-4 w-4 mr-2" />
                               Against
+                            </span>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-lg font-bold text-red-400">{againstPercentage.toFixed(1)}%</span>
+                              <span className="text-sm text-slate-400">({formatBigInt(proposal.againstVotes)} votes)</span>
                             </div>
-                            <div className="text-sm text-slate-300">Oppose this proposal</div>
-                          </button>
-                          
-                          <button
-                            onClick={() => onVote(3)}
-                            disabled={isVoting}
-                            className="w-full p-3 text-left bg-blue-600/20 hover:bg-blue-600/30 rounded-lg border border-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <div className="font-medium text-blue-400 flex items-center">
-                              <QuestionMarkCircleIcon className="h-4 w-4 mr-2" fill="currentColor" />
+                          </div>
+                          <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-red-500 to-red-400 h-3 rounded-full transition-all duration-500 shadow-lg shadow-red-500/50"
+                              style={{ width: `${againstPercentage}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Abstain Votes */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="flex items-center text-blue-400 font-medium">
+                              <QuestionMarkCircleIcon className="h-4 w-4 mr-2" />
                               Abstain
+                            </span>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-lg font-bold text-blue-400">{abstainPercentage.toFixed(1)}%</span>
+                              <span className="text-sm text-slate-400">({formatBigInt(proposal.abstainVotes)} votes)</span>
                             </div>
-                            <div className="text-sm text-slate-300">Abstain from voting</div>
-                          </button>
+                          </div>
+                          <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-blue-500 to-blue-400 h-3 rounded-full transition-all duration-500 shadow-lg shadow-blue-500/50"
+                              style={{ width: `${abstainPercentage}%` }}
+                            />
+                          </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Vote Buttons */}
+                    <div className="space-y-3 pt-2">
+                      <h3 className="text-sm font-semibold text-purple-200 uppercase tracking-wider mb-3">Cast Your Vote</h3>
+
+                      <button
+                        onClick={() => onVote(1)}
+                        disabled={isVoting}
+                        className="group w-full p-4 bg-gradient-to-r from-green-600/20 to-green-500/20 hover:from-green-600/30 hover:to-green-500/30 rounded-xl border-2 border-green-500/30 hover:border-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-lg hover:shadow-green-500/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <CheckCircleIcon className="h-6 w-6 text-green-400 mr-3" />
+                            <div className="text-left">
+                              <div className="font-bold text-green-400 text-lg">Vote For</div>
+                              <div className="text-sm text-slate-300">Support this proposal</div>
+                            </div>
+                          </div>
+                          <div className="text-2xl group-hover:translate-x-1 transition-transform">→</div>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => onVote(2)}
+                        disabled={isVoting}
+                        className="group w-full p-4 bg-gradient-to-r from-red-600/20 to-red-500/20 hover:from-red-600/30 hover:to-red-500/30 rounded-xl border-2 border-red-500/30 hover:border-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-lg hover:shadow-red-500/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <XCircleIcon className="h-6 w-6 text-red-400 mr-3" />
+                            <div className="text-left">
+                              <div className="font-bold text-red-400 text-lg">Vote Against</div>
+                              <div className="text-sm text-slate-300">Oppose this proposal</div>
+                            </div>
+                          </div>
+                          <div className="text-2xl group-hover:translate-x-1 transition-transform">→</div>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => onVote(3)}
+                        disabled={isVoting}
+                        className="group w-full p-4 bg-gradient-to-r from-blue-600/20 to-blue-500/20 hover:from-blue-600/30 hover:to-blue-500/30 rounded-xl border-2 border-blue-500/30 hover:border-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <QuestionMarkCircleIcon className="h-6 w-6 text-blue-400 mr-3" />
+                            <div className="text-left">
+                              <div className="font-bold text-blue-400 text-lg">Abstain</div>
+                              <div className="text-sm text-slate-300">Abstain from voting</div>
+                            </div>
+                          </div>
+                          <div className="text-2xl group-hover:translate-x-1 transition-transform">→</div>
+                        </div>
+                      </button>
                     </div>
                   </div>
                 </div>
