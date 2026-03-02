@@ -115,7 +115,8 @@ export async function POST(request: NextRequest) {
       abi: daoAbi,
       functionName: 'castVote',
       args: [proposalIdFromData, message.support],
-    });
+      chain: localhost,
+    } as any);
 
     console.log('Vote executed successfully:', hash);
 

@@ -64,7 +64,8 @@ export function useCreateProposal(): UseCreateProposal {
         abi: DAOVotingABI,
         functionName: 'createProposal',
         args: [data.description.trim()],
-      });
+        chain: undefined,
+      } as any);
 
       console.log('Proposal created successfully with hash:', hash);
       setIsSuccess(true);

@@ -32,7 +32,7 @@ export function useProposals(): UseProposals {
         address: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
         abi: DAOVotingABI,
         functionName: 'proposalCount'
-      });
+      } as any);
 
 
 
@@ -54,7 +54,7 @@ export function useProposals(): UseProposals {
           abi: DAOVotingABI,
           functionName: 'proposals',
           args: [id]
-        })
+        } as any)
       );
 
       const proposalsData = await Promise.all(proposalPromises);

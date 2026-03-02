@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { hashTypedData, toHex, keccak256, encodeFunctionData } from 'viem';
+import { DAO_CONTRACT } from '@/lib/contracts';
+import MinimalForwarder from '@/contracts/abis/MinimalForwarder.json';
 
 // Types for the proposal vote
 interface ProposalVote {
@@ -14,8 +16,8 @@ interface ProposalVote {
   const domain = {
   name: "DAOVoting",
   version: "1",
-  chainId: 31337,
-  verifyingContract: "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707" as `0x${string}`, // DAOVoting contract address
+  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '31337'),
+  verifyingContract: process.env.NEXT_PUBLIC_DAO_CONTRACT_ADDRESS as `0x${string}`,
 };
 
 const types = {
@@ -34,19 +36,7 @@ interface SignatureData {
   };
 }
 
-// ABI for the vote function
-const voteAbi = [
-  {
-    inputs: [
-      { name: "proposalId", type: "uint256" },
-      { name: "support", type: "uint8" }
-    ],
-    name: "vote",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function"
-  }
-] as const;
+
 
 export function useMetaTransactions() {
   const [isSigning, setIsSigning] = useState(false);
@@ -62,16 +52,15 @@ export function useMetaTransactions() {
     if (!publicClient || !address) return 0n;
     
     try {
-      // This would be a call to the forwarder contract
-      // return await publicClient.readContract({
-      //   address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-      //   abi: minimalForwarderAbi,
-      //   functionName: 'getNonce',
-      //   args: [address],
-      // })
+      // Get the nonce from the MinimalForwarder contract
+      const nonce = await publicClient.readContract({
+        address: process.env.NEXT_PUBLIC_FORWARDER_CONTRACT_ADDRESS as `0x${string}`,
+        abi: MinimalForwarder,
+        functionName: 'getNonce',
+        args: [address],
+      } as any);
       
-      // For demo purposes, return a random nonce
-      return BigInt(Math.floor(Math.random() * 1000000));
+      return nonce as bigint;
     } catch (err) {
       console.error('Failed to get nonce:', err);
       return 0n;
@@ -123,8 +112,8 @@ export function useMetaTransactions() {
       
       // Encode the function call data using proper ABI encoding
       const data = encodeFunctionData({
-        abi: voteAbi,
-        functionName: 'vote',
+        abi: DAO_CONTRACT.abi,
+        functionName: 'castVote',
         args: [vote.proposalId, vote.support]
       });
       
