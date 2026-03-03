@@ -3,7 +3,7 @@
 import { Transition, Dialog } from '@headlessui/react';
 import { Fragment } from 'react';
 import { format } from 'date-fns';
-import { enUS } from 'date-fns/locale';
+import { es } from 'date-fns/locale';
 import { Proposal } from '@/types/dao';
 import { XMarkIcon, CheckCircleIcon, XCircleIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 
@@ -28,7 +28,7 @@ export default function ProposalVoteModal({
     }
 
     try {
-      return format(date, 'MMM d, yyyy h:mm a', { locale: enUS });
+      return format(date, 'MMM d, yyyy h:mm a', { locale: es });
     } catch {
       return date.toLocaleString('en-US', {
         month: 'short',

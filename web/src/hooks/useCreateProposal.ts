@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Address } from 'viem';
-import { useWalletClient } from 'wagmi';
+import { useWalletClient, usePublicClient } from 'wagmi';
 
 // Types
 import { ProposalForm } from '@/types/dao';
@@ -26,6 +26,7 @@ export function useCreateProposal(): UseCreateProposal {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
 
   const reset = () => {
     setIsPending(false);
@@ -67,14 +68,22 @@ export function useCreateProposal(): UseCreateProposal {
         chain: undefined,
       } as any);
 
-      console.log('Proposal created successfully with hash:', hash);
+      console.log('Transaction sent:', hash);
+
+      // Esperar a que la transacción sea confirmada para asegurar que los datos estén disponibles
+      if (publicClient) {
+        console.log('Waiting for transaction receipt...');
+        await publicClient.waitForTransactionReceipt({ hash });
+      }
+
+      console.log('Proposal created successfully on-chain');
       setIsSuccess(true);
       return hash;
-    
+
     } catch (err) {
       const error = err as Error;
       console.error('Error creating proposal:', error);
-      
+
       // Mejor manejo de errores
       let errorMessage = 'Failed to create proposal';
       if (error.message.includes('user rejected')) {
@@ -84,7 +93,7 @@ export function useCreateProposal(): UseCreateProposal {
       } else if (error.message.includes('User rejected')) {
         errorMessage = 'Transaction was rejected by user';
       }
-      
+
       const formattedError = new Error(errorMessage);
       setError(formattedError);
       setIsError(true);

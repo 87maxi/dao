@@ -5,6 +5,9 @@ import { useAccount, useWalletClient, useBalance } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 
 export default function FundingPanel() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [amount, setAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -67,6 +70,8 @@ export default function FundingPanel() {
 
     return () => clearInterval(interval);
   }, [address, refetchTreasury, refetchUser]);
+
+  if (!mounted) return null;
 
   return (
     <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-purple-500/30 p-6 sticky top-8">

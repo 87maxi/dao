@@ -1,5 +1,6 @@
 import { http, createConfig } from 'wagmi'
 import { mainnet, sepolia } from 'wagmi/chains'
+import { injected } from 'wagmi/connectors'
 
 // Anvil chain configuration
 const anvil = {
@@ -26,6 +27,9 @@ const anvil = {
 
 export const config = createConfig({
   chains: [anvil, mainnet, sepolia],
+  connectors: [
+    injected(),
+  ],
   transports: {
     [anvil.id]: http(),
     [mainnet.id]: http(),
