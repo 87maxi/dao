@@ -1,15 +1,18 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Address } from 'viem';
-import { useWalletClient, usePublicClient } from 'wagmi';
+import { useState } from "react";
+import { Address } from "viem";
+import { useWalletClient, usePublicClient } from "wagmi";
 
 // Types
-import { ProposalForm } from '@/types/dao';
-import DAOVoting from '@/contracts/abis/DAOVoting.json';
+import { ProposalForm } from "@/types/dao";
+import DAOVoting from "@/contracts/abis/DAOVoting.json";
 
 interface UseCreateProposal {
-  createProposal: (data: ProposalForm) => Promise<`0x${string}` | null>;
+  createProposal: (
+    data: ProposalForm,
+    onSuccess?: () => void,
+  ) => Promise<`0x${string}` | null>;
   isPending: boolean;
   isSuccess: boolean;
   isError: boolean;
@@ -35,9 +38,12 @@ export function useCreateProposal(): UseCreateProposal {
     setError(null);
   };
 
-  const createProposal = async (data: ProposalForm): Promise<`0x${string}` | null> => {
+  const createProposal = async (
+    data: ProposalForm,
+    onSuccess?: () => void,
+  ): Promise<`0x${string}` | null> => {
     if (!walletClient) {
-      const err = new Error('Wallet client not available');
+      const err = new Error("Wallet client not available");
       setError(err);
       setIsError(true);
       throw err;
@@ -45,7 +51,7 @@ export function useCreateProposal(): UseCreateProposal {
 
     // Validación adicional de datos
     if (!data.description?.trim()) {
-      const err = new Error('Proposal description is required');
+      const err = new Error("Proposal description is required");
       setError(err);
       setIsError(true);
       throw err;
@@ -57,41 +63,43 @@ export function useCreateProposal(): UseCreateProposal {
     setIsSuccess(false);
 
     try {
-      console.log('Creating proposal with data:', data);
+      console.log("Creating proposal with data:", data);
 
       // Enviar la transacción usando el wallet client de wagmi
       const hash = await walletClient.writeContract({
         address: process.env.NEXT_PUBLIC_DAO_ADDRESS as Address,
         abi: DAOVotingABI,
-        functionName: 'createProposal',
+        functionName: "createProposal",
         args: [data.description.trim()],
         chain: undefined,
       } as any);
 
-      console.log('Transaction sent:', hash);
+      console.log("Transaction sent:", hash);
 
       // Esperar a que la transacción sea confirmada para asegurar que los datos estén disponibles
       if (publicClient) {
-        console.log('Waiting for transaction receipt...');
+        console.log("Waiting for transaction receipt...");
         await publicClient.waitForTransactionReceipt({ hash });
       }
 
-      console.log('Proposal created successfully on-chain');
+      console.log("Proposal created successfully on-chain");
       setIsSuccess(true);
+      if (onSuccess) {
+        onSuccess();
+      }
       return hash;
-
     } catch (err) {
       const error = err as Error;
-      console.error('Error creating proposal:', error);
+      console.error("Error creating proposal:", error);
 
       // Mejor manejo de errores
-      let errorMessage = 'Failed to create proposal';
-      if (error.message.includes('user rejected')) {
-        errorMessage = 'Transaction was rejected';
-      } else if (error.message.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for transaction';
-      } else if (error.message.includes('User rejected')) {
-        errorMessage = 'Transaction was rejected by user';
+      let errorMessage = "Failed to create proposal";
+      if (error.message.includes("user rejected")) {
+        errorMessage = "Transaction was rejected";
+      } else if (error.message.includes("insufficient funds")) {
+        errorMessage = "Insufficient funds for transaction";
+      } else if (error.message.includes("User rejected")) {
+        errorMessage = "Transaction was rejected by user";
       }
 
       const formattedError = new Error(errorMessage);

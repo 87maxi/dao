@@ -1,44 +1,44 @@
-import { http, createConfig } from 'wagmi'
-import { mainnet, sepolia } from 'wagmi/chains'
-import { injected } from 'wagmi/connectors'
+import { http, createConfig } from "wagmi";
+import { mainnet, sepolia } from "wagmi/chains";
+import { injected } from "wagmi/connectors";
 
 // Anvil chain configuration
 const anvil = {
   id: 31337,
-  name: 'Anvil',
-  network: 'anvil',
+  name: "Anvil",
+  network: "anvil",
   nativeCurrency: {
     decimals: 18,
-    name: 'Ether',
-    symbol: 'ETH',
+    name: "Ether",
+    symbol: "ETH",
   },
   rpcUrls: {
     default: {
-      http: ['http://127.0.0.1:8545'],
-      webSocket: ['ws://127.0.0.1:8545'],
+      http: ["http://127.0.0.1:8545"],
+      webSocket: ["ws://127.0.0.1:8545"],
     },
     public: {
-      http: ['http://127.0.0.1:8545'],
-      webSocket: ['ws://127.0.0.1:8545'],
+      http: ["http://127.0.0.1:8545"],
+      webSocket: ["ws://127.0.0.1:8545"],
     },
   },
   testnet: true,
-}
+};
 
 export const config = createConfig({
   chains: [anvil, mainnet, sepolia],
-  connectors: [
-    injected(),
-  ],
+  connectors: [injected()],
   transports: {
-    [anvil.id]: http(),
+    [anvil.id]: http(
+      process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545",
+    ),
     [mainnet.id]: http(),
     [sepolia.id]: http(),
   },
-})
+});
 
-declare module 'wagmi' {
+declare module "wagmi" {
   interface Register {
-    config: typeof config
+    config: typeof config;
   }
 }

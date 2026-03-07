@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
-import { hashTypedData, toHex, keccak256, encodeFunctionData } from 'viem';
-import { DAO_CONTRACT } from '@/lib/contracts';
-import MinimalForwarder from '@/contracts/abis/MinimalForwarder.json';
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { hashTypedData, toHex, keccak256, encodeFunctionData } from "viem";
+import { DAO_CONTRACT } from "@/lib/contracts";
+import MinimalForwarder from "@/contracts/abis/MinimalForwarder.json";
 
 // Types for the proposal vote
 interface ProposalVote {
@@ -13,11 +13,11 @@ interface ProposalVote {
 }
 
 // EIP-712 Typed Data structure
-  const domain = {
+const domain = {
   name: "DAOVoting",
   version: "1",
-  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '31337'),
-  verifyingContract: process.env.NEXT_PUBLIC_DAO_CONTRACT_ADDRESS as `0x${string}`,
+  chainId: 31337,
+  verifyingContract: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
 };
 
 const types = {
@@ -36,13 +36,13 @@ interface SignatureData {
   };
 }
 
-
-
 export function useMetaTransactions() {
   const [isSigning, setIsSigning] = useState(false);
-  const [signatureData, setSignatureData] = useState<SignatureData | null>(null);
+  const [signatureData, setSignatureData] = useState<SignatureData | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
-  
+
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
@@ -50,19 +50,24 @@ export function useMetaTransactions() {
   // Get the nonce from the forwarder contract
   const getNonce = async (): Promise<bigint> => {
     if (!publicClient || !address) return 0n;
-    
+
+    console.log(
+      "Fetching nonce with forwarder address:",
+      process.env.NEXT_PUBLIC_FORWARDER_CONTRACT_ADDRESS,
+    );
     try {
       // Get the nonce from the MinimalForwarder contract
       const nonce = await publicClient.readContract({
-        address: process.env.NEXT_PUBLIC_FORWARDER_CONTRACT_ADDRESS as `0x${string}`,
+        address: process.env
+          .NEXT_PUBLIC_FORWARDER_CONTRACT_ADDRESS as `0x${string}`,
         abi: MinimalForwarder,
-        functionName: 'getNonce',
+        functionName: "getNonce",
         args: [address],
       } as any);
-      
+
       return nonce as bigint;
     } catch (err) {
-      console.error('Failed to get nonce:', err);
+      console.error("Failed to get nonce:", err);
       return 0n;
     }
   };
@@ -72,7 +77,7 @@ export function useMetaTransactions() {
     return {
       domain,
       types,
-      primaryType: 'Vote' as const,
+      primaryType: "Vote" as const,
       message: vote,
     };
   };
@@ -80,43 +85,54 @@ export function useMetaTransactions() {
   // Sign the vote transaction
   const signVote = async (proposalId: number, support: 1 | 2 | 3) => {
     if (!walletClient || !address) {
-      setError('Wallet not connected');
+      setError("Wallet not connected");
       return null;
     }
-    
+
     setIsSigning(true);
     setError(null);
     setSignatureData(null);
-    
+
     try {
       // Get nonce
       const nonce = await getNonce();
-      
+
       // Create vote data
       const vote: ProposalVote = {
         proposalId: BigInt(proposalId),
         support,
       };
-      
+
       // Generate typed data
       const typedData = generateTypedData(vote);
-      
+
+      // Debugging: Log the data being signed
+      console.log(
+        "Signing Typed Data:",
+        JSON.stringify(
+          typedData,
+          (key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+
       // Get the digest hash
       const digest = hashTypedData(typedData);
-      
+
       // Sign the digest with account parameter
       const signature = await walletClient.signTypedData({
         account: address,
-        ...typedData
+        ...typedData,
       });
-      
+
       // Encode the function call data using proper ABI encoding
       const data = encodeFunctionData({
         abi: DAO_CONTRACT.abi,
-        functionName: 'castVote',
-        args: [vote.proposalId, vote.support]
+        functionName: "castVote",
+        args: [vote.proposalId, vote.support],
       });
-      
+
       // Create the transaction request structure expected by the relayer
       const request = {
         from: address,
@@ -124,31 +140,30 @@ export function useMetaTransactions() {
         data,
         nonce: nonce,
       };
-      
+
       const result = {
         signature,
         request,
       };
-      
+
       setSignatureData(result);
       return result;
-      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(`Failed to sign: ${errorMessage}`);
-      console.error('Signing error:', err);
+      console.error("Signing error:", err);
       return null;
     } finally {
       setIsSigning(false);
     }
   };
-  
+
   // Clear the signature data
   const clearSignature = () => {
     setSignatureData(null);
     setError(null);
   };
-  
+
   return {
     isSigning,
     signatureData,

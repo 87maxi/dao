@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useAccount, usePublicClient } from 'wagmi';
-import { Proposal } from '@/types/dao';
-import DAOVotingABI from '@/contracts/abis/DAOVoting.json';
+import { useState, useEffect, useCallback } from "react";
+import { useAccount, usePublicClient } from "wagmi";
+import { Proposal } from "@/types/dao";
+import DAOVotingABI from "@/contracts/abis/DAOVoting.json";
 
 interface UseProposals {
   proposals: Proposal[];
@@ -27,14 +27,16 @@ export function useProposals(): UseProposals {
     console.log(process.env.NEXT_PUBLIC_DAO_ADDRESS);
 
     try {
+      console.log(
+        "Fetching proposals with contract address:",
+        process.env.NEXT_PUBLIC_DAO_ADDRESS,
+      );
       // Leer el número total de propuestas
       const proposalCount = await publicClient.readContract({
         address: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
         abi: DAOVotingABI,
-        functionName: 'proposalCount'
+        functionName: "proposalCount",
       } as any);
-
-
 
       // Si no hay propuestas, retornar array vacío
       if (!proposalCount || proposalCount === BigInt(0)) {
@@ -45,40 +47,42 @@ export function useProposals(): UseProposals {
 
       // Convertir a número y limitar a 10 para evitar bucles largos en desarrollo
       const count = Number(proposalCount);
-      const proposalIds = Array.from({ length: Math.min(count, 10) }, (_, i) => BigInt(i + 1));
+      const proposalIds = Array.from({ length: Math.min(count, 10) }, (_, i) =>
+        BigInt(i + 1),
+      );
 
       // Obtener todas las propuestas en paralelo
-      const proposalPromises = proposalIds.map(id =>
+      const proposalPromises = proposalIds.map((id) =>
         publicClient.readContract({
           address: process.env.NEXT_PUBLIC_DAO_ADDRESS as `0x${string}`,
           abi: DAOVotingABI,
-          functionName: 'proposals',
-          args: [id]
-        } as any)
+          functionName: "proposals",
+          args: [id],
+        } as any),
       );
 
       const proposalsData = await Promise.all(proposalPromises);
 
       // Mapear los datos a la interfaz Proposal
-      const formattedProposals: Proposal[] = proposalsData.map((data: any, index) => ({
-        proposalId: proposalIds[index],
-        description: data.description,
-        createdAt: data.createdAt,
-        voteStart: data.voteStart,
-        voteEnd: data.voteEnd,
-        creator: data.creator,
-        executed: data.executed,
-        forVotes: data.forVotes,
-        againstVotes: data.againstVotes,
-        abstainVotes: data.abstainVotes
-      })) as Proposal[];
-
-
+      const formattedProposals: Proposal[] = proposalsData.map(
+        (data: any, index) => ({
+          proposalId: proposalIds[index],
+          description: data.description,
+          createdAt: data.createdAt,
+          voteStart: data.voteStart,
+          voteEnd: data.voteEnd,
+          creator: data.creator,
+          executed: data.executed,
+          forVotes: data.forVotes,
+          againstVotes: data.againstVotes,
+          abstainVotes: data.abstainVotes,
+        }),
+      ) as Proposal[];
 
       setProposals(formattedProposals);
     } catch (err) {
-      console.error('Error fetching proposals:', err);
-      setError('Failed to load proposals. Please try again later.');
+      console.error("Error fetching proposals:", err);
+      setError("Failed to load proposals. Please try again later.");
     } finally {
       setLoading(false);
     }

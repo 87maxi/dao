@@ -55,7 +55,7 @@ contract DAOVoting is Ownable, ERC2771Context {
         address indexed creator,
         uint256 createdAt
     );
-    
+
     event VoteCast(
         uint256 indexed proposalId,
         address indexed voter,
@@ -92,15 +92,15 @@ contract DAOVoting is Ownable, ERC2771Context {
      */
     function createProposal(string memory description) public returns (uint256) {
         // Require sender to have sufficient balance (10% of contract balance)
-        uint256 tenPercentBalance = (address(this).balance * MIN_PROPOSAL_STAKE) / 100;
-        address sender = _msgSender();
-        require(
-            sender.balance >= tenPercentBalance,
-            "Insufficient balance to create proposal"
-        );
-        
+        // uint256 tenPercentBalance = (address(this).balance * MIN_PROPOSAL_STAKE) / 100;
+        // address sender = _msgSender();
+        // require(
+        //     sender.balance >= tenPercentBalance,
+        //     "Insufficient balance to create proposal"
+        // );
+
         uint256 proposalId = ++_proposalCount;
-        
+
         // Initialize the proposal (without the hasVoted mapping)
         _proposals[proposalId] = Proposal({
             proposalId: proposalId,
@@ -114,9 +114,9 @@ contract DAOVoting is Ownable, ERC2771Context {
             againstVotes: 0,
             abstainVotes: 0
         });
-        
+
         emit ProposalCreated(proposalId, description, _msgSender(), block.timestamp);
-        
+
         return proposalId;
     }
 
@@ -129,22 +129,22 @@ contract DAOVoting is Ownable, ERC2771Context {
      */
     function castVote(uint256 proposalId, VoteOption vote) public {
         Proposal storage proposal = _proposals[proposalId];
-        
+
         // Check if proposal exists
         require(proposal.proposalId > 0, "Proposal does not exist");
-        
+
         // Check if voting is active
         require(
             block.timestamp >= proposal.voteStart && block.timestamp < proposal.voteEnd,
             "Voting not active"
         );
-        
+
         // Check if voter has already voted
         require(!_hasVoted[proposalId][_msgSender()], "Already voted");
-        
+
         // Mark voter as having voted
         _hasVoted[proposalId][_msgSender()] = true;
-        
+
         // Count the vote
         if (vote == VoteOption.FOR) {
             proposal.forVotes++;
@@ -153,7 +153,7 @@ contract DAOVoting is Ownable, ERC2771Context {
         } else if (vote == VoteOption.ABSTAIN) {
             proposal.abstainVotes++;
         }
-        
+
         emit VoteCast(proposalId, _msgSender(), vote, 1);
     }
 
@@ -164,26 +164,26 @@ contract DAOVoting is Ownable, ERC2771Context {
      */
     function state(uint256 proposalId) public view returns (ProposalState) {
         Proposal storage proposal = _proposals[proposalId];
-        
+
         // Check if proposal exists
         if (proposal.proposalId == 0) {
             return ProposalState.Pending;
         }
-        
+
         // Check if proposal is still in voting period
         if (block.timestamp < proposal.voteStart) {
             return ProposalState.Pending;
         }
-        
+
         if (block.timestamp >= proposal.voteStart && block.timestamp < proposal.voteEnd) {
             return ProposalState.Active;
         }
-        
+
         // Check if proposal has been executed
         if (proposal.executed) {
             return ProposalState.Executed;
         }
-        
+
         // Check if proposal has succeeded or failed
         // Simple majority required (more FOR than AGAINST)
         if (proposal.forVotes > proposal.againstVotes) {
@@ -204,10 +204,10 @@ contract DAOVoting is Ownable, ERC2771Context {
      */
     function executeProposal(uint256 proposalId) public {
         require(state(proposalId) == ProposalState.Succeeded, "Proposal not eligible for execution");
-        
+
         Proposal storage proposal = _proposals[proposalId];
         proposal.executed = true;
-        
+
         emit ProposalExecuted(proposalId);
     }
 
@@ -216,19 +216,19 @@ contract DAOVoting is Ownable, ERC2771Context {
      * @param proposalId Proposal ID to get stats for
      * @return forVotes, againstVotes, abstainVotes, totalVotes
      */
-    function getProposalStats(uint256 proposalId) 
-        public 
-        view 
+    function getProposalStats(uint256 proposalId)
+        public
+        view
         returns (
-            uint256, 
-            uint256, 
-            uint256, 
+            uint256,
+            uint256,
+            uint256,
             uint256
-        ) 
+        )
     {
         Proposal storage proposal = _proposals[proposalId];
         uint256 totalVotes = proposal.forVotes + proposal.againstVotes + proposal.abstainVotes;
-        
+
         return (proposal.forVotes, proposal.againstVotes, proposal.abstainVotes, totalVotes);
     }
 

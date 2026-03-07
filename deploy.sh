@@ -54,11 +54,11 @@ echo "" >&2  # Empty line for readability
 # Run the Foundry deployment script
 (cd ./sc && forge script ./script/DeployScript.s.sol:DeployScript --rpc-url "$RPC_URL" --broadcast --private-key "$PRIVATE_KEY" --slow --json);
 
-    
 
 
 
-        
+
+
         # Extract contract addresses (this is a simplified approach)
 FORWARDER_ADDRESS=$(jq -r '.transactions[] | select(.contractName == "MinimalForwarder") | .contractAddress' ./sc/broadcast/DeployScript.s.sol/31337/run-latest.json 2>/dev/null || echo "")
 DAO_ADDRESS=$(jq -r '.transactions[] | select(.contractName == "DAOVoting") | .contractAddress' ./sc/broadcast/DeployScript.s.sol/31337/run-latest.json 2>/dev/null || echo "")
