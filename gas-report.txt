@@ -1,0 +1,142 @@
+No files changed, compilation skipped
+
+Ran 5 tests for test/MinimalForwarder.t.sol:MinimalForwarderTest
+[PASS] testCannotExecuteWithWrongNonce() (gas: 65330)
+[PASS] testCannotExecuteWithWrongSignature() (gas: 62793)
+[PASS] testExecuteMetaTransaction() (gas: 141509)
+[PASS] testReplayProtection() (gas: 157177)
+[PASS] testVerify() (gas: 31838)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 2.14ms (3.83ms CPU time)
+
+Ran 9 tests for test/DAOVoting.t.sol:DAOVotingTest
+[PASS] test_CastVote_Against() (gas: 70686)
+[PASS] test_CastVote_For() (gas: 51662)
+[PASS] test_CreateProposal() (gas: 164140)
+[PASS] test_Emit_ProposalCreated_Event() (gas: 183380)
+[PASS] test_Emit_VoteCast_Event() (gas: 47392)
+[PASS] test_LoadTest_CanVoteMultipleTimes() (gas: 85488)
+[PASS] test_RevertIf_ProposalDoesNotExist() (gas: 34072)
+[PASS] test_RevertIf_VoterVotesTwice_DISABLED_FOR_LOAD_TESTING() (gas: 254)
+[PASS] test_RevertIf_VotingNotActive() (gas: 44883)
+Suite result: ok. 9 passed; 0 failed; 0 skipped; finished in 2.19ms (2.49ms CPU time)
+
+╭--------------------------------------+-----------------+--------+--------+--------+---------╮
+| src/DAOVoting.sol:DAOVoting Contract |                 |        |        |        |         |
++=============================================================================================+
+| Deployment Cost                      | Deployment Size |        |        |        |         |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| 1871825                              | 8938            |        |        |        |         |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+|                                      |                 |        |        |        |         |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| Function Name                        | Min             | Avg    | Median | Max    | # Calls |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| VOTING_PERIOD                        | 369             | 369    | 369    | 369    | 1       |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| castVote                             | 24455           | 33590  | 32949  | 52036  | 7       |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| createProposal                       | 125474          | 143494 | 142514 | 170341 | 11      |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| fund                                 | 21249           | 21249  | 21249  | 21249  | 9       |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| getProposalStats                     | 6043            | 6043   | 6043   | 6043   | 3       |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| proposals                            | 14915           | 14915  | 14915  | 14915  | 1       |
+|--------------------------------------+-----------------+--------+--------+--------+---------|
+| state                                | 5511            | 5511   | 5511   | 5511   | 1       |
+╰--------------------------------------+-----------------+--------+--------+--------+---------╯
+
+╭------------------------------------------------------+-----------------+-------+--------+-------+---------╮
+| test/MinimalForwarder.t.sol:ForwarderHelper Contract |                 |       |        |       |         |
++===========================================================================================================+
+| Deployment Cost                                      | Deployment Size |       |        |       |         |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| 1343230                                              | 7757            |       |        |       |         |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+|                                                      |                 |       |        |       |         |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| Function Name                                        | Min             | Avg   | Median | Max   | # Calls |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| execute                                              | 33335           | 56357 | 35862  | 88377 | 5       |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| getHashTypedDataV4                                   | 942             | 942   | 942    | 942   | 5       |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| getNonce                                             | 2807            | 2807  | 2807   | 2807  | 2       |
+|------------------------------------------------------+-----------------+-------+--------+-------+---------|
+| verify                                               | 8082            | 8082  | 8082   | 8082  | 1       |
+╰------------------------------------------------------+-----------------+-------+--------+-------+---------╯
+
+╭-----------------------------------------------+-----------------+------+--------+------+---------╮
+| test/MinimalForwarder.t.sol:Receiver Contract |                 |      |        |      |         |
++==================================================================================================+
+| Deployment Cost                               | Deployment Size |      |        |      |         |
+|-----------------------------------------------+-----------------+------+--------+------+---------|
+| 226134                                        | 829             |      |        |      |         |
+|-----------------------------------------------+-----------------+------+--------+------+---------|
+|                                               |                 |      |        |      |         |
+|-----------------------------------------------+-----------------+------+--------+------+---------|
+| Function Name                                 | Min             | Avg  | Median | Max  | # Calls |
+|-----------------------------------------------+-----------------+------+--------+------+---------|
+| lastFrom                                      | 2507            | 2507 | 2507   | 2507 | 1       |
+╰-----------------------------------------------+-----------------+------+--------+------+---------╯
+
+
+Ran 2 test suites in 6.99ms (4.34ms CPU time): 14 tests passed, 0 failed, 0 skipped (14 total tests)
+
+
+¡Este es un informe excelente y muy revelador! Es exactamente lo que queríamos ver. Analicémoslo juntos, porque nos cuenta una historia muy clara sobre dónde se está gastando el dinero (gas) en tu contrato.
+
+La conclusión principal es que nuestras optimizaciones en `castVote` fueron un **éxito rotundo**, pero ahora el informe revela claramente cuál es el siguiente gran cuello de botella a optimizar.
+
+### Análisis del Informe de Gas
+
+#### 1. `createProposal` (El Gran Consumidor de Gas)
+*   **Coste Promedio: 143,494 gas**
+*   **Análisis:** Esta función es, con diferencia, la más cara de tu contrato. La razón es muy específica y es un problema clásico en Solidity: **estás guardando un `string` (`description`) directamente en el almacenamiento de la blockchain.**
+*   **¿Por qué es tan caro?** Guardar datos de tamaño dinámico como `string` o `bytes` es extremadamente costoso en gas. El coste aumenta con la longitud del texto. Si una propuesta tiene una descripción muy larga, el coste se disparará (por eso el "Max" es de 170k, mientras que el "Min" es de 125k).
+
+#### 2. `castVote` (Nuestra Optimización Exitosa)
+*   **Coste Promedio: 33,590 gas**
+*   **Análisis:** ¡Aquí es donde brillan nuestras optimizaciones de "struct packing"! Un coste promedio de ~33k para una función que modifica el estado es muy bueno. El coste base de cualquier transacción es de 21,000 gas, por lo que el coste real de la lógica de tu función es de solo ~12.5k gas.
+*   **¿Por qué hay diferencia entre "Min" (24k) y "Max" (52k)?** Esto es normal. La primera vez que se modifica una variable de almacenamiento en una transacción (por ejemplo, cambiar un contador de votos de `0` a `1`), la EVM cobra un coste extra. Las siguientes veces que se modifica ese mismo contador, el coste es menor. El informe refleja que Foundry ha probado ambos escenarios.
+
+### ¿Qué Podemos Mejorar? (El Plan de Acción)
+
+Basado en este análisis, aquí están las dos mejoras más importantes que puedes hacer, que son estándar en la industria para contratos de este tipo.
+
+#### Mejora #1: Mover la Descripción de la Propuesta Fuera de la Cadena (Off-Chain)
+
+Esta es la optimización más importante que puedes hacer ahora mismo. En lugar de guardar el texto completo de la propuesta en la blockchain, guardaremos únicamente una "huella digital" (un hash) de ese texto.
+
+**El Flujo de Trabajo Sería:**
+1.  **Frontend/Cliente:** El usuario escribe la descripción de la propuesta.
+2.  **Almacenamiento Off-Chain:** El texto completo se guarda en un sistema de almacenamiento descentralizado como **IPFS** (InterPlanetary File System) o Arweave.
+3.  **Obtener el Hash:** IPFS te devuelve un hash único que representa ese contenido (llamado CID). Este hash es de un tamaño fijo (32 o 64 bytes).
+4.  **Llamada al Contrato:** El frontend llama a tu función `createProposal`, pero en lugar de pasar el `string` completo, pasa el `bytes32` del hash de IPFS.
+5.  **Resultado:** Has reemplazado una escritura de `string` (muy cara y de tamaño variable) por una escritura de `bytes32` (muy barata y de tamaño fijo).
+
+**Cambios en el Código:**
+Tendrías que modificar tu `struct Proposal` y la función `createProposal`:
+
+```solidity
+// EN: dao/sc/src/DAOVoting.sol
+
+struct Proposal {
+    uint256 proposalId;
+    // string description; // <-- ESTO SE VA
+    bytes32 descriptionHash; // <-- ESTO SE AÑADE (mucho más barato)
+
+    // ... el resto del struct
+}
+
+function createProposal(bytes32 descriptionHash) public returns (uint256) {
+    // ... la lógica es la misma, solo cambia el parámetro
+}
+```
+**Impacto Esperado:** El coste de `createProposal` se reducirá drásticamente, probablemente a menos de la mitad, y será un coste fijo sin importar lo larga que sea la descripción.
+
+
+Resumen y Próximos Pasos
+
+1.  **Prioridad #1 (`createProposal`):** Modifica tu contrato para aceptar un `bytes32 descriptionHash` en lugar de un `string description`. Esta es una optimización de gas pura y muy potente.
+2.  **Prioridad #2 (`castVote`):** Integra tu frontend para que, en lugar de pedir al usuario que envíe una transacción, firme un mensaje y lo envíe a tu API de relevo. Esta es una optimización de experiencia de usuario.
