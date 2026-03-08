@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Address } from "viem";
+import { Address, toHex } from "viem";
 import { useWalletClient, usePublicClient } from "wagmi";
 
 // Types
@@ -65,12 +65,19 @@ export function useCreateProposal(): UseCreateProposal {
     try {
       console.log("Creating proposal with data:", data);
 
+      // OPTIMIZATION: Convert the string description to a bytes32 hex string.
+      // The `toHex` utility converts the string to its hex representation, and
+      // the `{ size: 32 }` option pads it with zeros to ensure it's exactly 32 bytes long,
+      // matching the `bytes32` type expected by the optimized smart contract.
+      const descriptionAsBytes32 = toHex(data.description.trim(), { size: 32 });
+      console.log("Description converted to bytes32:", descriptionAsBytes32);
+
       // Enviar la transacción usando el wallet client de wagmi
       const hash = await walletClient.writeContract({
         address: process.env.NEXT_PUBLIC_DAO_ADDRESS as Address,
         abi: DAOVotingABI,
         functionName: "createProposal",
-        args: [data.description.trim()],
+        args: [descriptionAsBytes32], // Pass the converted bytes32 value
         chain: undefined,
       } as any);
 

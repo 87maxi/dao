@@ -11,6 +11,10 @@
     "stateMutability": "nonpayable"
   },
   {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
     "type": "function",
     "name": "EXECUTION_DELAY",
     "inputs": [],
@@ -72,9 +76,9 @@
     "name": "createProposal",
     "inputs": [
       {
-        "name": "description",
-        "type": "string",
-        "internalType": "string"
+        "name": "_descriptionHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -101,6 +105,13 @@
   },
   {
     "type": "function",
+    "name": "fund",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "getProposalStats",
     "inputs": [
       {
@@ -111,22 +122,22 @@
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "forVotes",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "againstVotes",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "abstainVotes",
         "type": "uint256",
         "internalType": "uint256"
       },
       {
-        "name": "",
+        "name": "totalVotes",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -224,24 +235,39 @@
             "internalType": "uint256"
           },
           {
-            "name": "description",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "createdAt",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "descriptionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "voteStart",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint64",
+            "internalType": "uint64"
           },
           {
             "name": "voteEnd",
-            "type": "uint256",
-            "internalType": "uint256"
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "createdAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "forVotes",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "againstVotes",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "abstainVotes",
+            "type": "uint64",
+            "internalType": "uint64"
           },
           {
             "name": "creator",
@@ -252,21 +278,6 @@
             "name": "executed",
             "type": "bool",
             "internalType": "bool"
-          },
-          {
-            "name": "forVotes",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "againstVotes",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "abstainVotes",
-            "type": "uint256",
-            "internalType": "uint256"
           }
         ]
       }
@@ -355,10 +366,10 @@
         "internalType": "uint256"
       },
       {
-        "name": "description",
-        "type": "string",
+        "name": "descriptionHash",
+        "type": "bytes32",
         "indexed": false,
-        "internalType": "string"
+        "internalType": "bytes32"
       },
       {
         "name": "creator",
