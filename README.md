@@ -104,5 +104,13 @@ classDiagram
     npm run dev
     ```
 
+
+<p align="center">
+  <video src="assets/demo-daovoting.webm" width="100%" controls>
+    Tu navegador no soporta el elemento de video.
+  </video>
+</p>
+
+
 ---
 *Desarrollado como una solución integral de gobernanza Web3.*
