@@ -104,12 +104,7 @@ classDiagram
     npm run dev
     ```
 
-
-<p align="center">
-  <video src="assets/demo-daovoting.webm" width="100%" controls>
-    Tu navegador no soporta el elemento de video.
-  </video>
-</p>
+<video src="https://github.com/87maxi/dao/raw/main/assets/demo-dao-voting.mp4" width="100%" controls ></video>
 
 
 ---
