@@ -1,5 +1,7 @@
 # 🏛️ DAO Governance System with Gasless Voting
 
+![Descripción](assets/DaoVoting.png)
+
 Este proyecto implementa una Organización Autónoma Descentralizada (DAO) robusta, diseñada para ofrecer una experiencia de gobernanza descentralizada eficiente. El sistema destaca por su integración de meta-transacciones (voto sin gas), permitiendo que los usuarios participen sin preocuparse por los costos de red directos.
 
 ## 🚀 Funcionalidades Principales
